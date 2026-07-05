@@ -32,4 +32,4 @@ jobs:
           fi
       - run: npm ci
       - name: Deploy Convex (production)
-        run: npx convex deploy -y
+        run: npx convex deploy
