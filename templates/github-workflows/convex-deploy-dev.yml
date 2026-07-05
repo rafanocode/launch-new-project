@@ -1,0 +1,34 @@
+name: Convex Deploy (staging)
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'convex/**'
+      - 'package.json'
+      - '.github/workflows/convex-deploy-dev.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: convex-deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to staging deployment
+    runs-on: ubuntu-latest
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY_STAGING }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verify deploy key present
+        run: |
+          if [ -z "$CONVEX_DEPLOY_KEY" ]; then
+            echo "::error::Missing secret CONVEX_DEPLOY_KEY_STAGING"; exit 1
+          fi
+      - run: npm ci
+      - name: Deploy Convex (staging)
+        run: npx convex deploy -y

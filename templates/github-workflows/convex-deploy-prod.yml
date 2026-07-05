@@ -1,0 +1,35 @@
+name: Convex Deploy (production)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'convex/**'
+      - 'package.json'
+      - '.github/workflows/convex-deploy-prod.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: convex-deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production deployment
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY_PROD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verify deploy key present
+        run: |
+          if [ -z "$CONVEX_DEPLOY_KEY" ]; then
+            echo "::error::Missing secret CONVEX_DEPLOY_KEY_PROD"; exit 1
+          fi
+      - run: npm ci
+      - name: Deploy Convex (production)
+        run: npx convex deploy -y
