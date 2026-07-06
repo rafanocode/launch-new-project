@@ -86,3 +86,7 @@ green. shellcheck should produce no output.
 - Spec: `docs/superpowers/specs/2026-07-05-init-2env-convex-design.md`
 - Plan: `docs/superpowers/plans/2026-07-05-init-2env-convex.md`
 - Manual end-to-end validation: `docs/E2E-CHECKLIST.md`
+
+## License
+
+[MIT](LICENSE)
