@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
 set -u
-# Links/creates a Vercel project and sets CONVEX_DEPLOY_KEY +
-# NEXT_PUBLIC_CONVEX_URL per target: production gets the prod values,
-# preview and development get the staging values. Values are piped via
-# stdin to `vercel env add`, never passed on argv or printed to stdout.
+# Links/creates a Vercel project and sets CONVEX_DEPLOY_KEY per target:
+# production gets the prod key, preview and development get the staging key.
+# The key selects WHICH Convex deployment; NEXT_PUBLIC_CONVEX_URL is injected
+# at build time by the build command (see NOTE below), never stored here.
+# Values are piped via stdin to `vercel env add`, never passed on argv or
+# printed to stdout.
 #
-# Reads PROD_KEY / STAGING_KEY from --keys-file (written earlier by
+# Reads PROD_KEY / STAGING_KEY from the keys file (written earlier by
 # setup-convex.sh). Does not delete the keys file; orchestration does that.
-PROJECT="${1:?usage: wire-vercel.sh <project> <keys-file> --prod-url U --staging-url U}"; shift
+PROJECT="${1:?usage: wire-vercel.sh <project> <keys-file>}"; shift
 KEYS_FILE="${1:?keys file required}"; shift
-PROD_URL=""; STAGING_URL=""
-while [ $# -gt 0 ]; do case "$1" in
-  --prod-url) PROD_URL="$2"; shift 2;;
-  --staging-url) STAGING_URL="$2"; shift 2;;
-  *) shift;; esac; done
 # shellcheck disable=SC1090
 . "$KEYS_FILE"
 
@@ -29,10 +26,7 @@ add_env() { # <name> <target> <value>
 add_env CONVEX_DEPLOY_KEY production   "${PROD_KEY:-}"
 add_env CONVEX_DEPLOY_KEY preview      "${STAGING_KEY:-}"
 add_env CONVEX_DEPLOY_KEY development  "${STAGING_KEY:-}"
-add_env NEXT_PUBLIC_CONVEX_URL production   "$PROD_URL"
-add_env NEXT_PUBLIC_CONVEX_URL preview      "$STAGING_URL"
-add_env NEXT_PUBLIC_CONVEX_URL development  "$STAGING_URL"
 
 echo "vercel: env configured for $PROJECT"
 echo "NOTE: if the GitHub repo isn't linked to Vercel yet, connect it once in the Vercel dashboard (Project → Settings → Git)."
-echo "NOTE: set the Vercel Build Command to: npx convex deploy --cmd 'npm run build' (Project → Settings → Build & Development Settings). The orchestration stamps this into vercel.json when it scaffolds; if you created the project by hand, set it manually."
+echo "NOTE: the Vercel Build Command must be: npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL (Project → Settings → Build & Development Settings). The orchestration writes this into vercel.json; NEXT_PUBLIC_CONVEX_URL is injected at build time, not stored as an env var. If you created the project by hand, set it manually."

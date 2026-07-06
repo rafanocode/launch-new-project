@@ -166,15 +166,20 @@ filtered to `convex/**`. **No SQL migrations and no drift detection** — Convex
 `wire-vercel.sh`:
 1. Create the Vercel project and connect the GitHub repo (`vercel` CLI/API +
    `VERCEL_TOKEN`); production branch = `main`, others = preview.
-2. Build command: `npx convex deploy --cmd 'npm run build'` (official Convex+Vercel
-   pattern — deploys Convex and builds the frontend with the URL injected).
+2. Build command: `npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL`
+   (official Convex+Vercel pattern — deploys Convex and builds the frontend with
+   the deployment URL injected into `NEXT_PUBLIC_CONVEX_URL` at build time).
 3. Set env vars per target:
 
 | Variable | production | preview / development |
 |---|---|---|
 | `CONVEX_DEPLOY_KEY` | production deployment key | staging deployment key |
-| `NEXT_PUBLIC_CONVEX_URL` | production URL | staging URL |
 | *(starter extras, if any)* | … | … |
+
+`NEXT_PUBLIC_CONVEX_URL` is **not** a stored env var: it is injected at build
+time by `--cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL`. The value is correct per
+environment automatically because `CONVEX_DEPLOY_KEY` (set above) selects which
+Convex deployment the build deploys to.
 
 **Netlify** equivalent: `netlify sites:create`, `netlify env:set` per context
 (`production` / `deploy-preview` / `branch-deploy`), analogous build command. Same
