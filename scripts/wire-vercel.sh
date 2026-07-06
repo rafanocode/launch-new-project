@@ -35,3 +35,4 @@ add_env NEXT_PUBLIC_CONVEX_URL development  "$STAGING_URL"
 
 echo "vercel: env configured for $PROJECT"
 echo "NOTE: if the GitHub repo isn't linked to Vercel yet, connect it once in the Vercel dashboard (Project → Settings → Git)."
+echo "NOTE: set the Vercel Build Command to: npx convex deploy --cmd 'npm run build' (Project → Settings → Build & Development Settings). The orchestration stamps this into vercel.json when it scaffolds; if you created the project by hand, set it manually."
