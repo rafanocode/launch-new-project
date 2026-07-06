@@ -500,7 +500,7 @@ Expected: FAIL — command templates not found.
 
 - [ ] **Step 3: Create `issue.md` template**
 
-`templates/claude-commands/issue.md` (adapted from qorum, Convex-ified):
+`templates/claude-commands/issue.md` (adapted from an earlier project, Convex-ified):
 ````markdown
 ---
 description: Start work on a Linear issue — sync dev, create branch, set In Progress, initial analysis. Usage: /issue {{TEAM_KEY}}-52

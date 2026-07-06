@@ -8,7 +8,7 @@
 
 Provide a single Claude Code command, `/init-2env`, that bootstraps a **brand-new
 project from zero** with two persistent environments (`main` = production, `dev` =
-staging/test) and wires up everything needed to work like the WYK / qorum
+staging/test) and wires up everything needed to work like other established
 projects — but on **Convex** instead of Supabase, and with as little manual input
 from the user as possible ("do the minimum, ideally nothing").
 
@@ -156,7 +156,7 @@ functions** (same `convex/` deployed to both), **not data** — both start empty
   Same with `CONVEX_DEPLOY_KEY_PROD`, `environment: production` (reviewer optional,
   none in v1 per the autonomy decision).
 
-YAML rules (inherited from qorum's solid pattern): `concurrency` groups,
+YAML rules (a proven pattern from prior projects): `concurrency` groups,
 `cancel-in-progress: false`, secrets in `env:` referenced as `"$VAR"`, `paths:`
 filtered to `convex/**`. **No SQL migrations and no drift detection** — Convex
 `deploy` reconciles the schema.
@@ -200,8 +200,8 @@ team creation fails (plan limit), stop and offer "project inside an existing tea
 
 **Templates `issue.md` / `close-issue.md`** (stamped into the new project's
 `.claude/commands/`, parameterised with `{{TEAM_KEY}}`, `{{AUTHOR_PREFIX}}`,
-`{{TEAM_NAME}}`, detected build/lint commands). Derived from qorum's versions,
-adapted to Convex:
+`{{TEAM_NAME}}`, detected build/lint commands). Derived from an earlier project's
+versions, adapted to Convex:
 
 `/issue {{TEAM_KEY}}-NN`:
 - Validate `^{{TEAM_KEY}}-\d+$`, clean tree, sync `dev`.
@@ -220,7 +220,7 @@ adapted to Convex:
 - **PR-based:** `gh pr create --base dev`. Merge to `dev` triggers the staging
   deploy workflow; `dev` → `main` (prod) stays a deliberate user action.
 - Set Linear to **In Review** + handoff.
-- Keep qorum's hard rules: explicit per-gate confirmation, no `git add -A`, no
+- Keep the established hard rules: explicit per-gate confirmation, no `git add -A`, no
   `--force` (only `--force-with-lease`), no `--no-verify`, never push to dev/main
   directly.
 
