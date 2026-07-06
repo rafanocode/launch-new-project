@@ -29,17 +29,17 @@ Print the FULL PLAN: repo (name+visibility), Convex project + `staging` deployme
    - `templates/claude-commands/*` → `.claude/commands/`
    - `templates/CLAUDE.md` → `./CLAUDE.md`; `templates/docs/*` → `./docs/`; `templates/env/.env.example` → `./.env.example`
    - Commit the stamped files.
-5. **Secrets**: `scripts/set-github-secrets.sh owner/repo "$keys"` — sets the two GitHub Actions secrets (`CONVEX_DEPLOY_KEY_PROD`, `CONVEX_DEPLOY_KEY_STAGING`) plus the `staging`/`production` GitHub environments. This step reads `"$keys"` but does NOT delete it — the deploy-host step (7) still needs it. Resolve the two Convex deployment URLs (`prod`, `staging`) via `npx convex` (dashboard/CLI) and keep them for step 7.
-6. **Linear**: `mcp__plugin_linear_linear__list_teams`; create the new team (via MCP if available, else GraphQL with LINEAR_API_KEY) with the confirmed key; create a project named after the app; note it. If team creation fails (plan limit), STOP and offer "project inside an existing team" (list via `list_projects`).
-7. **Deploy host**: `scripts/wire-vercel.sh <name> "$keys" --prod-url <U> --staging-url <U>` (or `wire-netlify.sh` for Netlify). This is the last consumer of `"$keys"` — after this step nothing else needs it. Alongside wiring, write the zero-touch build config so the Convex build command is set with no manual dashboard step:
+5. **Secrets**: `scripts/set-github-secrets.sh owner/repo "$keys"` — sets the two GitHub Actions secrets (`CONVEX_DEPLOY_KEY_PROD`, `CONVEX_DEPLOY_KEY_STAGING`) plus the `staging`/`production` GitHub environments. This step reads `"$keys"` but does NOT delete it — the deploy-host step (7) still needs it.
+6. **Linear**: optionally discover existing teams first with `mcp__plugin_linear_linear__list_teams` (read-only). Then create the new team **via the Linear GraphQL API using LINEAR_API_KEY**: `curl -sS -X POST https://api.linear.app/graphql -H "Authorization: $LINEAR_API_KEY" -H "Content-Type: application/json" -d '{"query":"mutation{ teamCreate(input:{name:\"<TEAM_NAME>\",key:\"<TEAM_KEY>\"}){ success team{ id name key } } }"}'` with the confirmed key; then create a project named after the app with the `projectCreate` mutation (passing the new team id in `teamIds`); note the returned ids/urls. If team creation fails (plan limit), STOP and offer "project inside an existing team" (list via `list_projects`).
+7. **Deploy host**: `scripts/wire-vercel.sh <name> "$keys"` (or `wire-netlify.sh <site> "$keys"` for Netlify). This is the last consumer of `"$keys"` — after this step nothing else needs it. Alongside wiring, write the zero-touch build config so the Convex build command is set with no manual dashboard step. The build command injects `NEXT_PUBLIC_CONVEX_URL` at build time via `--cmd-url-env-var-name` (correct per environment because `CONVEX_DEPLOY_KEY` selects the deployment), so no URL env var is stored:
    - **Vercel**: write `vercel.json` at the project root:
      ```json
-     { "buildCommand": "npx convex deploy --cmd 'npm run build'" }
+     { "buildCommand": "npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL" }
      ```
    - **Netlify**: write `netlify.toml` at the project root with a `[build]` section:
      ```toml
      [build]
-     command = "npx convex deploy --cmd 'npm run build'"
+     command = "npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL"
      publish = ".next"
      ```
    Commit `vercel.json` or `netlify.toml` together with the stamped files from step 4 (or in its own small commit if step 4 already ran) so the build command is live with no manual dashboard step.

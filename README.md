@@ -35,9 +35,10 @@ rationale.
   `CONVEX_DEPLOY_KEY` already exported.
 - **Deploy host**: `VERCEL_TOKEN` exported (or `vercel login`) for Vercel —
   the default — or `netlify login` if you choose Netlify.
-- **Linear**: `LINEAR_API_KEY` exported, or the Linear MCP connected. This one
-  is soft — preflight reports it but does not block, since the command can
-  fall back to MCP.
+- **Linear**: `LINEAR_API_KEY` exported (required). The command creates the
+  Linear team and project via the Linear GraphQL API using this key, so preflight
+  blocks if it is missing. The read-only Linear MCP is still used for discovery
+  (listing existing teams/projects) when available.
 
 The command never logs you in on your behalf; it only checks and reports.
 

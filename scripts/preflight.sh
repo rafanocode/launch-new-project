@@ -17,7 +17,7 @@ else
   check vercel "set VERCEL_TOKEN or run: vercel login" command -v vercel
 fi
 
-# Linear is soft: MCP may provide it. Report but do not fail.
-if [ -n "${LINEAR_API_KEY:-}" ]; then echo "OK linear (LINEAR_API_KEY)"; else echo "SOFT linear: no LINEAR_API_KEY — relying on Linear MCP"; fi
+# Linear is required: the command creates the team/project via the Linear GraphQL API.
+if [ -n "${LINEAR_API_KEY:-}" ]; then echo "OK linear (LINEAR_API_KEY)"; else echo "MISSING linear: export LINEAR_API_KEY (needed to create the Linear team/project)"; fatal=1; fi
 
 exit "$fatal"
