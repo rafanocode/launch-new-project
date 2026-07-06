@@ -51,13 +51,14 @@ command against a real project.
 ### (d) Vercel/Netlify env vars + build command
 
 - [ ] The Vercel (or Netlify) project exists and is linked to the repo.
-- [ ] Env vars are present for both the Production and Preview/staging
-      contexts (matching `templates/env/.env.example`'s `NEXT_PUBLIC_CONVEX_URL`
-      per target).
+- [ ] `CONVEX_DEPLOY_KEY` is present per target (Vercel: production ← prod key,
+      preview/development ← staging key; Netlify: production / deploy-preview /
+      branch-deploy). `NEXT_PUBLIC_CONVEX_URL` is NOT stored — it is injected at
+      build time by the build command below.
 - [ ] `vercel.json` (or `netlify.toml`) exists at the project root with the
       Convex-aware build command:
-      - Vercel: `"buildCommand": "npx convex deploy --cmd 'npm run build'"`
-      - Netlify: `[build] command = "npx convex deploy --cmd 'npm run build'"`
+      - Vercel: `"buildCommand": "npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL"`
+      - Netlify: `[build] command = "npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL"`
 - [ ] A deploy triggered from either `main` or `dev` actually runs that build
       command (check the deploy's build log) and succeeds.
 
