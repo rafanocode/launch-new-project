@@ -61,13 +61,6 @@ assert_contains "$out" "no organizations found" "reports zero orgs distinctly fr
 assert_not_contains "$out" "multiple organizations" "does not misreport zero orgs as multiple"
 rm -f "$keys"
 
-# --mode branch is not yet implemented in this task (Task 7 replaces this
-# stopgap) -> loud, non-zero exit, not a silent no-op success
-keys="$(mktemp)"
-out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode branch --keys-file "$keys" --org-id org1 2>&1)"; rc=$?
-assert_fail_exit "$rc" "mode=branch stopgap exits non-zero rather than silently succeeding"
-rm -f "$keys"
-
 # --org-id explicit skips org resolution entirely
 stub_supabase_happy
 keys="$(mktemp)"
@@ -99,6 +92,46 @@ esac'
 keys="$(mktemp)"
 out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode projects --keys-file "$keys" 2>&1)"; rc=$?
 assert_fail_exit "$rc" "fatal when projects create genuinely fails"
+rm -f "$keys"
+
+# mode=branch, branch creation succeeds
+make_stub supabase '
+case "$1 $2" in
+  "orgs list") echo "[{\"id\":\"org1\",\"name\":\"Acme\",\"slug\":\"org1\"}]"; exit 0;;
+  "projects list") echo "[]"; exit 0;;
+  "projects create") echo "{\"ref\":\"prodref1\"}"; exit 0;;
+  "projects api-keys") echo "[{\"name\":\"default\",\"type\":\"publishable\",\"api_key\":\"sb_publishable_prod\"}]"; exit 0;;
+  "branches create") echo "{\"ref\":\"branchref1\"}"; exit 0;;
+  "branches get") echo "{\"ref\":\"branchref1\"}"; exit 0;;
+  *) exit 0;;
+esac'
+keys="$(mktemp)"
+out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode branch --keys-file "$keys")"; rc=$?
+assert_eq "$rc" "0" "mode=branch succeeds when branch creation works"
+k="$(cat "$keys")"
+assert_contains "$k" "SUPABASE_REF_PROD=prodref1" "writes prod ref"
+assert_contains "$k" "SUPABASE_STAGING_PROVISIONED=yes" "marks staging as provisioned"
+assert_contains "$k" "SUPABASE_REF_STAGING=branchref1" "writes staging ref from the branch"
+rm -f "$keys"
+
+# mode=branch, branch creation fails -> non-fatal, staging marked not-provisioned
+make_stub supabase '
+case "$1 $2" in
+  "orgs list") echo "[{\"id\":\"org1\",\"name\":\"Acme\",\"slug\":\"org1\"}]"; exit 0;;
+  "projects list") echo "[]"; exit 0;;
+  "projects create") echo "{\"ref\":\"prodref1\"}"; exit 0;;
+  "projects api-keys") echo "[{\"name\":\"default\",\"type\":\"publishable\",\"api_key\":\"sb_publishable_prod\"}]"; exit 0;;
+  "branches create") echo "GitHub integration not connected" >&2; exit 1;;
+  *) exit 0;;
+esac'
+keys="$(mktemp)"
+out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode branch --keys-file "$keys")"; rc=$?
+assert_eq "$rc" "0" "mode=branch still exits 0 when branch creation fails (non-fatal, best-effort)"
+k="$(cat "$keys")"
+assert_contains "$k" "SUPABASE_REF_PROD=prodref1" "still writes prod ref"
+assert_contains "$k" "SUPABASE_STAGING_PROVISIONED=no" "marks staging as not provisioned"
+assert_not_contains "$k" "SUPABASE_REF_STAGING" "does not write a staging ref when the branch failed"
+assert_contains "$out" "connect this repo in Supabase" "prints the manual follow-up instruction"
 rm -f "$keys"
 
 exit "$FAILS"

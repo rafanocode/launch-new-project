@@ -118,12 +118,26 @@ if [ "$MODE" = "projects" ]; then
   echo "supabase: setup complete, mode=projects (keys written to keys file)"
 fi
 
-# mode=branch is implemented by Task 7, which REPLACES this stopgap with the
-# real branch-creation logic. Left as a loud, non-zero-exit placeholder here
-# (rather than silently falling through and exiting 0 having done nothing)
-# so this task is independently correct: a "does nothing, exits 0" mode is a
-# false success, not a genuinely idempotent no-op.
 if [ "$MODE" = "branch" ]; then
-  echo "setup-supabase: --mode branch is not yet implemented" >&2
-  exit 2
+  prod_out="$(create_project "${SLUG}")" || exit 1
+  prod_ref="${prod_out%% *}"; prod_pw="${prod_out#* }"
+  write_env_block PROD "$prod_ref" "$prod_pw" || exit 1
+
+  if branch_out="$(supabase branches create dev --persistent --project-ref "$prod_ref" -o json 2>&1)"; then
+    branch_ref="$(printf '%s' "$branch_out" | jq -r '.ref // empty' 2>/dev/null)"
+  else
+    branch_ref=""
+  fi
+
+  if [ -n "$branch_ref" ]; then
+    # A persistent branch is its own project-like entity: it has its own
+    # ref and API keys, but shares the parent project's DB password.
+    write_env_block STAGING "$branch_ref" "$prod_pw" || exit 1
+    echo "SUPABASE_STAGING_PROVISIONED=yes" >> "$KEYS_FILE"
+    echo "supabase: setup complete, mode=branch (staging is a persistent branch of $prod_ref)"
+  else
+    echo "SUPABASE_STAGING_PROVISIONED=no" >> "$KEYS_FILE"
+    echo "supabase: prod project ready ($prod_ref); persistent branch creation did not succeed (best-effort): $branch_out" >&2
+    echo "supabase: connect this repo in Supabase → Settings → Integrations → GitHub, then create a persistent 'dev' branch from the dashboard (or re-run: supabase branches create dev --persistent --project-ref $prod_ref)."
+  fi
 fi
