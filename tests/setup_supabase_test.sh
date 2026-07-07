@@ -5,6 +5,7 @@ set -u
 
 stub_supabase_happy() {
 make_stub supabase '
+echo "supabase $*" >> "${SUPABASE_CALL_LOG:-/dev/null}"
 case "$1 $2" in
   "orgs list") echo "[{\"id\":\"org1\",\"name\":\"Acme Org\",\"slug\":\"org1\"}]"; exit 0;;
   "projects list") echo "[]"; exit 0;;
@@ -15,6 +16,7 @@ esac'
 }
 
 # Happy path: single org auto-resolved, two projects created, keys extracted
+SUPABASE_CALL_LOG="$(mktemp)"; export SUPABASE_CALL_LOG
 stub_supabase_happy
 keys="$(mktemp)"
 out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode projects --keys-file "$keys")"; rc=$?
@@ -27,7 +29,11 @@ assert_contains "$k" "SUPABASE_DB_URL_PROD=postgresql://postgres:" "writes prod 
 assert_contains "$k" "SUPABASE_REF_STAGING=refabc123" "writes staging ref"
 assert_contains "$k" "SUPABASE_PUBLISHABLE_KEY_STAGING=sb_publishable_xyz" "writes staging publishable key"
 case "$out" in *sb_secret_xyz*) echo "  FAIL: secret key leaked to stdout"; FAILS=$((FAILS+1));; *) echo "  ok: no secret key on stdout";; esac
-rm -f "$keys"
+prod_pw="$(printf '%s' "$k" | sed -n 's#^SUPABASE_DB_URL_PROD=postgresql://postgres:\([^@]*\)@.*#\1#p')"
+assert_not_contains "$out" "$prod_pw" "generated db password never appears on stdout"
+assert_contains "$(cat "$SUPABASE_CALL_LOG")" "--region" "passes --region to projects create"
+rm -f "$keys" "$SUPABASE_CALL_LOG"
+unset SUPABASE_CALL_LOG
 
 # Multiple orgs, no --org-id given -> fatal, lists them
 make_stub supabase '
@@ -40,6 +46,26 @@ out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode projects --keys-file "
 assert_fail_exit "$rc" "fatal when multiple orgs and no --org-id"
 assert_contains "$out" "org1" "lists org1 as a candidate"
 assert_contains "$out" "org2" "lists org2 as a candidate"
+rm -f "$keys"
+
+# Zero orgs, no --org-id given -> fatal, distinct message from the multi-org case
+make_stub supabase '
+case "$1 $2" in
+  "orgs list") echo "[]"; exit 0;;
+  *) exit 0;;
+esac'
+keys="$(mktemp)"
+out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode projects --keys-file "$keys" 2>&1)"; rc=$?
+assert_fail_exit "$rc" "fatal when zero orgs and no --org-id"
+assert_contains "$out" "no organizations found" "reports zero orgs distinctly from the multi-org case"
+assert_not_contains "$out" "multiple organizations" "does not misreport zero orgs as multiple"
+rm -f "$keys"
+
+# --mode branch is not yet implemented in this task (Task 7 replaces this
+# stopgap) -> loud, non-zero exit, not a silent no-op success
+keys="$(mktemp)"
+out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode branch --keys-file "$keys" --org-id org1 2>&1)"; rc=$?
+assert_fail_exit "$rc" "mode=branch stopgap exits non-zero rather than silently succeeding"
 rm -f "$keys"
 
 # --org-id explicit skips org resolution entirely

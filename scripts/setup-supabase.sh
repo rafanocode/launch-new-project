@@ -38,6 +38,10 @@ if [ -z "$ORG_ID" ]; then
   count="$(printf '%s' "$orgs_json" | jq 'length')"
   case "$count" in
     1) ORG_ID="$(printf '%s' "$orgs_json" | jq -r '.[0].id')" ;;
+    0)
+      echo "setup-supabase: no organizations found on this account — create one first (https://supabase.com/dashboard/org/new or 'supabase orgs create'), then re-run." >&2
+      exit 1
+      ;;
     *)
       echo "setup-supabase: multiple organizations found, pass --org-id (or export SUPABASE_ORG_ID):" >&2
       printf '%s' "$orgs_json" | jq -r '.[] | "  \(.id)  \(.name)"' >&2
@@ -57,7 +61,8 @@ find_project_ref() { # <name>
 # already exists, since its DB password is unrecoverable. On success prints
 # "<ref> <password>" (space-separated) to stdout.
 create_project() { # <name>
-  local name="$1" existing ref pw out
+  local name="$1" existing ref pw out region
+  region="${SUPABASE_REGION:-us-east-1}"
   existing="$(find_project_ref "$name")"
   if [ -n "$existing" ]; then
     echo "setup-supabase: project '$name' already exists ($existing) but its DB password can only be captured at creation time — cannot safely resume." >&2
@@ -65,7 +70,7 @@ create_project() { # <name>
     return 1
   fi
   pw="$(gen_db_password)"
-  out="$(supabase projects create "$name" --org-id "$ORG_ID" --db-password "$pw" -o json 2>&1)" \
+  out="$(supabase projects create "$name" --org-id "$ORG_ID" --db-password "$pw" --region "$region" -o json 2>&1)" \
     || { echo "setup-supabase: failed to create project '$name': $out" >&2; return 1; }
   ref="$(printf '%s' "$out" | jq -r '.ref // .id // empty' 2>/dev/null)"
   [ -n "$ref" ] || { echo "setup-supabase: could not determine project ref for '$name' from: $out" >&2; return 1; }
@@ -111,4 +116,14 @@ if [ "$MODE" = "projects" ]; then
   write_env_block STAGING "$staging_ref" "$staging_pw" || exit 1
 
   echo "supabase: setup complete, mode=projects (keys written to keys file)"
+fi
+
+# mode=branch is implemented by Task 7, which REPLACES this stopgap with the
+# real branch-creation logic. Left as a loud, non-zero-exit placeholder here
+# (rather than silently falling through and exiting 0 having done nothing)
+# so this task is independently correct: a "does nothing, exits 0" mode is a
+# false success, not a genuinely idempotent no-op.
+if [ "$MODE" = "branch" ]; then
+  echo "setup-supabase: --mode branch is not yet implemented" >&2
+  exit 2
 fi
