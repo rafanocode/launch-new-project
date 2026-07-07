@@ -22,13 +22,21 @@ make_stub vercel 'case "$1 $2" in "env add") exit 1;; "link") exit 1;; *) exit 0
 out="$(VERCEL_TOKEN=bad bash "$ROOT/scripts/wire-vercel.sh" acme "$keys" 2>&1)"; rc=$?
 assert_fail_exit "$rc" "real vercel failure exits non-zero, not silently continuing"
 
-# supabase backend not yet implemented here (Task 9 in the plan replaces this branch) -> errors loudly, doesn't fall through to convex handling
+# supabase backend not yet implemented here (Task 9 in the plan replaces this branch) -> errors loudly BEFORE calling convex's add_env, doesn't fall through
+log="$(mktemp)"
+make_stub vercel "echo \"vercel \$*\" >> $log; exit 0"
 out="$(VERCEL_TOKEN=t bash "$ROOT/scripts/wire-vercel.sh" acme "$keys" supabase 2>&1)"; rc=$?
 assert_fail_exit "$rc" "supabase backend placeholder exits non-zero rather than silently reusing convex handling"
+assert_not_contains "$(cat "$log")" "CONVEX_DEPLOY_KEY" "does not fall through to convex's add_env calls"
+rm -f "$log"
 
-# unknown backend -> also errors loudly
+# unknown backend -> also errors loudly before any add_env call
+log="$(mktemp)"
+make_stub vercel "echo \"vercel \$*\" >> $log; exit 0"
 out="$(VERCEL_TOKEN=t bash "$ROOT/scripts/wire-vercel.sh" acme "$keys" bogus 2>&1)"; rc=$?
 assert_fail_exit "$rc" "unknown backend exits non-zero"
+assert_not_contains "$(cat "$log")" "CONVEX_DEPLOY_KEY" "does not fall through to convex's add_env calls"
+rm -f "$log"
 
 rm -f "$keys"
 exit "$FAILS"
