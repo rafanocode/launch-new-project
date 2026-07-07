@@ -1824,7 +1824,7 @@ Ask only what can't be inferred (use `AskUserQuestion`):
 4. Deploy target: Vercel (default) or Netlify.
 5. Confirm Linear team key and AUTHOR_PREFIX (initials from `git config user.name`).
 6. **Convex only**: if the account belongs to more than one Convex team (the user will know; there's no way to enumerate this via the CLI), ask for the team slug (`CONVEX_TEAM`). If they have only one team, skip this question — it's auto-detected.
-7. **Supabase only**: if the account belongs to more than one organization, `scripts/setup-supabase.sh` will list them and stop; ask which org to use (`--org-id`) only if that happens (don't ask upfront — most accounts have exactly one org and it's auto-detected).
+7. **Supabase only**: run `supabase orgs list -o json` yourself right now (read-only, no side effects) to check org count — do this here, not in Phase 2, because Phase 2 has no further prompts and the full plan below needs to state which org will be used. If exactly one org, use it silently. If more than one, ask which org to use (`--org-id`); if zero, tell the user to create one first (same message `scripts/setup-supabase.sh` would give) and stop.
 
 Detect build/lint commands from the scaffold's `package.json` (default `npm run build` / `npm run lint`).
 
