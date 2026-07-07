@@ -35,8 +35,16 @@ case "$BACKEND" in
     add_env CONVEX_DEPLOY_KEY development  "${STAGING_KEY:-}" || exit 1
     ;;
   supabase)
-    echo "vercel: unknown backend 'supabase' handling not yet implemented" >&2
-    exit 1
+    add_env NEXT_PUBLIC_SUPABASE_URL            production "${SUPABASE_URL_PROD:-}"            || exit 1
+    add_env NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY production "${SUPABASE_PUBLISHABLE_KEY_PROD:-}" || exit 1
+    if [ "${SUPABASE_STAGING_PROVISIONED:-yes}" = "no" ]; then
+      echo "vercel: staging not provisioned (best-effort Supabase branch creation didn't complete) — skipping preview/development env vars"
+    else
+      add_env NEXT_PUBLIC_SUPABASE_URL            preview    "${SUPABASE_URL_STAGING:-}"            || exit 1
+      add_env NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY preview    "${SUPABASE_PUBLISHABLE_KEY_STAGING:-}" || exit 1
+      add_env NEXT_PUBLIC_SUPABASE_URL            development "${SUPABASE_URL_STAGING:-}"            || exit 1
+      add_env NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY development "${SUPABASE_PUBLISHABLE_KEY_STAGING:-}" || exit 1
+    fi
     ;;
   *)
     echo "vercel: unknown backend '$BACKEND'" >&2
