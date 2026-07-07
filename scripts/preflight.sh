@@ -25,19 +25,18 @@ if [ "$DEPLOY" = "netlify" ]; then
   # shellcheck disable=SC2329
   netlify_authed() {
     command -v netlify >/dev/null 2>&1 || return 1
-    [ -n "${NETLIFY_AUTH_TOKEN:-}" ] && return 0
-    netlify status >/dev/null 2>&1
+    if [ -n "${NETLIFY_AUTH_TOKEN:-}" ]; then
+      netlify status --auth "$NETLIFY_AUTH_TOKEN" >/dev/null 2>&1
+    else
+      netlify status >/dev/null 2>&1
+    fi
   }
   check netlify "set NETLIFY_AUTH_TOKEN or run: npm i -g netlify-cli && netlify login" netlify_authed
 else
   # shellcheck disable=SC2329
   vercel_authed() {
     command -v vercel >/dev/null 2>&1 || return 1
-    if [ -n "${VERCEL_TOKEN:-}" ]; then
-      vercel whoami --token "$VERCEL_TOKEN" >/dev/null 2>&1
-    else
-      vercel whoami >/dev/null 2>&1
-    fi
+    vercel whoami >/dev/null 2>&1
   }
   check vercel "set VERCEL_TOKEN or run: vercel login" vercel_authed
 fi
@@ -46,7 +45,6 @@ if [ "$BACKEND" = "supabase" ]; then
   # shellcheck disable=SC2329
   supabase_authed() {
     command -v supabase >/dev/null 2>&1 || return 1
-    [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] && return 0
     supabase projects list >/dev/null 2>&1
   }
   check supabase "set SUPABASE_ACCESS_TOKEN or run: npm i -g supabase && supabase login" supabase_authed

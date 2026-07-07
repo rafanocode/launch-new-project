@@ -53,11 +53,11 @@ out="$(env -u LINEAR_API_KEY bash "$ROOT/scripts/preflight.sh" --deploy vercel 2
 assert_fail_exit "$rc" "non-zero when LINEAR_API_KEY unset"
 assert_contains "$out" "MISSING linear" "reports linear missing"
 
-# --backend supabase: supabase CLI missing -> fatal
-# Remove supabase stub to test the "missing" scenario; system may have supabase installed, so we shadow it with a failing stub
+# --backend supabase: supabase binary truly absent -> fatal
+# Restrict PATH to STUB_BIN + core system dirs so a real supabase CLI installed via
+# Homebrew (e.g. /opt/homebrew/bin) on the dev machine doesn't leak into the test.
 rm -f "$STUB_BIN/supabase"
-make_stub supabase 'exit 1' # shadow system supabase with a failing stub
-out="$(LINEAR_API_KEY=x bash "$ROOT/scripts/preflight.sh" --deploy vercel --backend supabase 2>&1)"; rc=$?
+out="$(LINEAR_API_KEY=x PATH="$STUB_BIN:/bin:/usr/bin" bash "$ROOT/scripts/preflight.sh" --deploy vercel --backend supabase 2>&1)"; rc=$?
 assert_fail_exit "$rc" "non-zero when backend=supabase and supabase CLI missing"
 assert_contains "$out" "MISSING supabase" "reports supabase cli missing"
 
@@ -67,9 +67,22 @@ out="$(LINEAR_API_KEY=x env -u SUPABASE_ACCESS_TOKEN bash "$ROOT/scripts/preflig
 assert_fail_exit "$rc" "non-zero when backend=supabase and no supabase session"
 assert_contains "$out" "MISSING supabase" "reports supabase not authed"
 
-# --backend supabase: SUPABASE_ACCESS_TOKEN set -> OK without calling projects list
+# --backend supabase: SUPABASE_ACCESS_TOKEN set and the CLI actually verifies it via projects list -> OK
+make_stub supabase 'case "$1 $2" in "projects list") [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] && exit 0 || exit 1;; *) exit 0;; esac'
 out="$(LINEAR_API_KEY=x SUPABASE_ACCESS_TOKEN=tok bash "$ROOT/scripts/preflight.sh" --deploy vercel --backend supabase)"; rc=$?
 assert_eq "$rc" "0" "exit 0 when backend=supabase and SUPABASE_ACCESS_TOKEN set"
 assert_contains "$out" "OK supabase" "reports supabase ok"
+
+# --deploy netlify: happy path, netlify authed
+make_stub netlify 'case "$1" in status) exit 0;; *) exit 0;; esac'
+out="$(LINEAR_API_KEY=x bash "$ROOT/scripts/preflight.sh" --deploy netlify)"; rc=$?
+assert_eq "$rc" "0" "exit 0 when netlify authed"
+assert_contains "$out" "OK netlify" "reports netlify ok"
+
+# --deploy netlify: binary present but not authed (status fails) -> fatal
+make_stub netlify 'case "$1" in status) exit 1;; *) exit 0;; esac'
+out="$(LINEAR_API_KEY=x env -u NETLIFY_AUTH_TOKEN bash "$ROOT/scripts/preflight.sh" --deploy netlify 2>&1)"; rc=$?
+assert_fail_exit "$rc" "non-zero when netlify binary present but not authed"
+assert_contains "$out" "MISSING netlify" "reports netlify not authed"
 
 exit "$FAILS"
