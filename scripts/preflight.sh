@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -u
 DEPLOY="vercel"
-while [ $# -gt 0 ]; do case "$1" in --deploy) DEPLOY="$2"; shift 2;; *) shift;; esac; done
+BACKEND="convex"
+while [ $# -gt 0 ]; do case "$1" in
+  --deploy) DEPLOY="$2"; shift 2;;
+  --backend) BACKEND="$2"; shift 2;;
+  *) shift;;
+esac; done
 
 fatal=0
 check() { # <name> <hint> ; runs following command via "$@" after first two args
@@ -10,11 +15,41 @@ check() { # <name> <hint> ; runs following command via "$@" after first two args
 }
 
 check gh "run: gh auth login" gh auth status
-check convex "run: npm i -g convex (or npx convex)" command -v convex
+check jq "run: brew install jq (or your package manager's jq)" jq --version
+
+# shellcheck disable=SC2329
+convex_present() { command -v convex >/dev/null 2>&1 || npx --no-install convex --version >/dev/null 2>&1; }
+check convex "run: npm i -g convex (or ensure npx convex works)" convex_present
+
 if [ "$DEPLOY" = "netlify" ]; then
-  check netlify "run: npm i -g netlify-cli && netlify login" command -v netlify
+  # shellcheck disable=SC2329
+  netlify_authed() {
+    command -v netlify >/dev/null 2>&1 || return 1
+    [ -n "${NETLIFY_AUTH_TOKEN:-}" ] && return 0
+    netlify status >/dev/null 2>&1
+  }
+  check netlify "set NETLIFY_AUTH_TOKEN or run: npm i -g netlify-cli && netlify login" netlify_authed
 else
-  check vercel "set VERCEL_TOKEN or run: vercel login" command -v vercel
+  # shellcheck disable=SC2329
+  vercel_authed() {
+    command -v vercel >/dev/null 2>&1 || return 1
+    if [ -n "${VERCEL_TOKEN:-}" ]; then
+      vercel whoami --token "$VERCEL_TOKEN" >/dev/null 2>&1
+    else
+      vercel whoami >/dev/null 2>&1
+    fi
+  }
+  check vercel "set VERCEL_TOKEN or run: vercel login" vercel_authed
+fi
+
+if [ "$BACKEND" = "supabase" ]; then
+  # shellcheck disable=SC2329
+  supabase_authed() {
+    command -v supabase >/dev/null 2>&1 || return 1
+    [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] && return 0
+    supabase projects list >/dev/null 2>&1
+  }
+  check supabase "set SUPABASE_ACCESS_TOKEN or run: npm i -g supabase && supabase login" supabase_authed
 fi
 
 # Linear is required: the command creates the team/project via the Linear GraphQL API.
