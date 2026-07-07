@@ -6,22 +6,43 @@ set -u
 # (umask 077), never to stdout — later setup steps (GitHub secrets, etc.)
 # consume that file.
 #
+# --team / CONVEX_TEAM: `convex project create` defaults to the account's
+# only team, or PROMPTS when there are several (verified via
+# `npx convex project create --help`; there is no CLI subcommand to list
+# teams, unlike Supabase's `orgs list`). Passing --team explicitly avoids
+# that interactive prompt ever happening in a non-interactive run; stdin is
+# also redirected from /dev/null so an unexpected prompt fails fast instead
+# of hanging.
+#
 # Note: real end-to-end provisioning (e.g. that a freshly created project
 # actually has a default "prod" deployment available for token minting) is
 # validated by the E2E checklist, not by these unit tests — the tests here
 # stub the `convex` CLI so no real Convex account is touched.
-SLUG="${1:?usage: setup-convex.sh <slug> --keys-file <path>}"; shift
+SLUG="${1:?usage: setup-convex.sh <slug> --keys-file <path> [--team <team_slug>]}"; shift
 KEYS_FILE=""
-while [ $# -gt 0 ]; do case "$1" in --keys-file) KEYS_FILE="$2"; shift 2;; *) shift;; esac; done
+TEAM="${CONVEX_TEAM:-}"
+while [ $# -gt 0 ]; do case "$1" in
+  --keys-file) KEYS_FILE="$2"; shift 2;;
+  --team) TEAM="$2"; shift 2;;
+  *) shift;;
+esac; done
 [ -n "$KEYS_FILE" ] || { echo "setup-convex: --keys-file required" >&2; exit 2; }
+
+team_flag=()
+[ -n "$TEAM" ] && team_flag=(--team "$TEAM")
 
 # 1. Project (idempotent: a non-zero "already exists" is not fatal)
 echo "convex: ensuring project $SLUG"
-convex project create "$SLUG" >/dev/null 2>&1 || echo "convex: project exists or already created, continuing"
+# "${team_flag[@]+"${team_flag[@]}"}" (not a bare "${team_flag[@]}") — expanding a
+# declared-but-empty array under `set -u` is an unbound-variable error on bash
+# <4.4 (confirmed on this repo's target, macOS's bash 3.2); the ${arr[@]+word}
+# form only substitutes when the array actually has elements.
+convex project create "$SLUG" "${team_flag[@]+"${team_flag[@]}"}" </dev/null >/dev/null 2>&1 \
+  || echo "convex: project exists or already created, continuing"
 
 # 2. Staging prod-type deployment (idempotent)
 echo "convex: ensuring staging deployment"
-convex deployment create staging --type prod >/dev/null 2>&1 || echo "convex: staging exists, continuing"
+convex deployment create staging --type prod </dev/null >/dev/null 2>&1 || echo "convex: staging exists, continuing"
 
 # 3. Deploy keys — captured, never printed
 echo "convex: minting deploy keys"

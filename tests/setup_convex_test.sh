@@ -21,4 +21,27 @@ case "$out" in *prod_or_staging_key_ABC*) echo "  FAIL: key leaked to stdout"; F
 assert_contains "$(cat "$keys")" "PROD_KEY=" "writes PROD_KEY to keys file"
 assert_contains "$(cat "$keys")" "STAGING_KEY=" "writes STAGING_KEY to keys file"
 rm -f "$keys"
+
+# --team is passed through to `project create`
+log="$(mktemp)"
+make_stub convex "echo \"convex \$*\" >> $log
+case \"\$1 \$2\" in
+  \"project create\") exit 0;;
+  \"deployment create\") exit 0;;
+  \"deployment token\") echo key; exit 0;;
+  *) exit 0;;
+esac"
+keys="$(mktemp)"
+bash "$ROOT/scripts/setup-convex.sh" acme --keys-file "$keys" --team my-team >/dev/null
+assert_contains "$(cat "$log")" "--team my-team" "passes --team through to project create"
+rm -f "$log" "$keys"
+
+# CONVEX_TEAM env var also works (flag not given)
+log="$(mktemp)"
+make_stub convex "echo \"convex \$*\" >> $log; exit 0"
+keys="$(mktemp)"
+CONVEX_TEAM=env-team bash "$ROOT/scripts/setup-convex.sh" acme --keys-file "$keys" >/dev/null
+assert_contains "$(cat "$log")" "--team env-team" "passes CONVEX_TEAM env var through to project create"
+rm -f "$log" "$keys"
+
 exit "$FAILS"
