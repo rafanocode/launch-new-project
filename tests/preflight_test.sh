@@ -73,6 +73,14 @@ out="$(LINEAR_API_KEY=x SUPABASE_ACCESS_TOKEN=tok bash "$ROOT/scripts/preflight.
 assert_eq "$rc" "0" "exit 0 when backend=supabase and SUPABASE_ACCESS_TOKEN set"
 assert_contains "$out" "OK supabase" "reports supabase ok"
 
+# --backend supabase: SUPABASE_ACCESS_TOKEN set but invalid (projects list fails regardless) -> fatal
+# Regression guard: catches a reintroduced `[ -n "$TOKEN" ] && return 0` short-circuit,
+# which would report OK here even though the token doesn't actually work.
+make_stub supabase 'case "$1 $2" in "projects list") exit 1;; *) exit 0;; esac'
+out="$(LINEAR_API_KEY=x SUPABASE_ACCESS_TOKEN=bad-tok bash "$ROOT/scripts/preflight.sh" --deploy vercel --backend supabase 2>&1)"; rc=$?
+assert_fail_exit "$rc" "non-zero when backend=supabase and SUPABASE_ACCESS_TOKEN is set but invalid"
+assert_contains "$out" "MISSING supabase" "reports supabase not authed despite token present"
+
 # --deploy netlify: happy path, netlify authed
 make_stub netlify 'case "$1" in status) exit 0;; *) exit 0;; esac'
 out="$(LINEAR_API_KEY=x bash "$ROOT/scripts/preflight.sh" --deploy netlify)"; rc=$?
@@ -84,5 +92,13 @@ make_stub netlify 'case "$1" in status) exit 1;; *) exit 0;; esac'
 out="$(LINEAR_API_KEY=x env -u NETLIFY_AUTH_TOKEN bash "$ROOT/scripts/preflight.sh" --deploy netlify 2>&1)"; rc=$?
 assert_fail_exit "$rc" "non-zero when netlify binary present but not authed"
 assert_contains "$out" "MISSING netlify" "reports netlify not authed"
+
+# --deploy netlify: NETLIFY_AUTH_TOKEN set but invalid (status fails regardless) -> fatal
+# Regression guard: catches a reintroduced `[ -n "$TOKEN" ] && return 0` short-circuit,
+# which would report OK here even though the token doesn't actually work.
+make_stub netlify 'case "$1" in status) exit 1;; *) exit 0;; esac'
+out="$(LINEAR_API_KEY=x NETLIFY_AUTH_TOKEN=bad-tok bash "$ROOT/scripts/preflight.sh" --deploy netlify 2>&1)"; rc=$?
+assert_fail_exit "$rc" "non-zero when netlify NETLIFY_AUTH_TOKEN is set but invalid"
+assert_contains "$out" "MISSING netlify" "reports netlify not authed despite token present"
 
 exit "$FAILS"

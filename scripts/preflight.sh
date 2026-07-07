@@ -25,11 +25,7 @@ if [ "$DEPLOY" = "netlify" ]; then
   # shellcheck disable=SC2329
   netlify_authed() {
     command -v netlify >/dev/null 2>&1 || return 1
-    if [ -n "${NETLIFY_AUTH_TOKEN:-}" ]; then
-      netlify status --auth "$NETLIFY_AUTH_TOKEN" >/dev/null 2>&1
-    else
-      netlify status >/dev/null 2>&1
-    fi
+    netlify status >/dev/null 2>&1
   }
   check netlify "set NETLIFY_AUTH_TOKEN or run: npm i -g netlify-cli && netlify login" netlify_authed
 else
