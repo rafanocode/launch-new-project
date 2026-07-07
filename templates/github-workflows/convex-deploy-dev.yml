@@ -17,6 +17,7 @@ jobs:
   deploy:
     name: Deploy to staging deployment
     runs-on: ubuntu-latest
+    environment: staging
     env:
       CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY_STAGING }}
     steps:

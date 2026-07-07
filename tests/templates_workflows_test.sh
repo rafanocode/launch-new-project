@@ -16,5 +16,6 @@ assert_contains "$(cat "$tmp/convex-deploy-dev.yml")" "CONVEX_DEPLOY_KEY_STAGING
 assert_contains "$(cat "$tmp/convex-deploy-prod.yml")" "CONVEX_DEPLOY_KEY_PROD" "prod workflow uses prod key"
 assert_contains "$(cat "$tmp/convex-deploy-dev.yml")" "branches: [dev]" "dev workflow triggers on dev"
 assert_contains "$(cat "$tmp/convex-deploy-prod.yml")" "branches: [main]" "prod workflow triggers on main"
+assert_contains "$(cat "$tmp/convex-deploy-dev.yml")" "environment: staging" "dev workflow declares the staging GitHub Environment"
 rm -rf "$tmp"
 exit "$FAILS"
