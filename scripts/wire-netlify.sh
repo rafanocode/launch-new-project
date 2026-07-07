@@ -44,6 +44,7 @@ case "$BACKEND" in
     set_ctx CONVEX_DEPLOY_KEY production     "${PROD_KEY:-}"    || exit 1
     set_ctx CONVEX_DEPLOY_KEY deploy-preview "${STAGING_KEY:-}" || exit 1
     set_ctx CONVEX_DEPLOY_KEY branch-deploy  "${STAGING_KEY:-}" || exit 1
+    echo "NOTE: the netlify.toml [build] command must be: npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL. The orchestration writes this into netlify.toml; NEXT_PUBLIC_CONVEX_URL is injected at build time, not stored as an env var."
     ;;
   supabase)
     set_ctx NEXT_PUBLIC_SUPABASE_URL            production "${SUPABASE_URL_PROD:-}"            || exit 1
@@ -63,4 +64,3 @@ case "$BACKEND" in
     ;;
 esac
 echo "netlify: env configured for $SITE"
-echo "NOTE: the netlify.toml [build] command must be: npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL. The orchestration writes this into netlify.toml; NEXT_PUBLIC_CONVEX_URL is injected at build time, not stored as an env var."

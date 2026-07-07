@@ -15,6 +15,7 @@ assert_contains "$l" "env add CONVEX_DEPLOY_KEY development" "sets development d
 assert_contains "$l" "--force" "uses --force so re-runs don't fail on existing vars"
 assert_not_contains "$l" "--token" "does not pass the token on argv (VERCEL_TOKEN env var only)"
 assert_not_contains "$l" "NEXT_PUBLIC_CONVEX_URL" "does not store convex url (build-injected)"
+assert_contains "$out" "npx convex deploy" "prints the Convex build-command note for backend=convex"
 rm -f "$log"
 
 # Real failure (e.g. bad auth) must NOT be swallowed
@@ -41,6 +42,7 @@ assert_contains "$l" "env add NEXT_PUBLIC_SUPABASE_URL production" "sets prod su
 assert_contains "$l" "env add NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY production" "sets prod publishable key"
 assert_contains "$l" "env add NEXT_PUBLIC_SUPABASE_URL preview" "sets preview supabase url"
 assert_contains "$l" "env add NEXT_PUBLIC_SUPABASE_URL development" "sets development supabase url"
+assert_not_contains "$out" "npx convex deploy" "does not print the Convex build-command note for backend=supabase"
 rm -f "$log"
 
 # Supabase backend, staging not provisioned -> preview/development env vars skipped, still succeeds

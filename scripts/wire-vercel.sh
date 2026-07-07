@@ -33,6 +33,7 @@ case "$BACKEND" in
     add_env CONVEX_DEPLOY_KEY production   "${PROD_KEY:-}"    || exit 1
     add_env CONVEX_DEPLOY_KEY preview      "${STAGING_KEY:-}" || exit 1
     add_env CONVEX_DEPLOY_KEY development  "${STAGING_KEY:-}" || exit 1
+    echo "NOTE: the Vercel Build Command must be: npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL (Project → Settings → Build & Development Settings). The orchestration writes this into vercel.json; NEXT_PUBLIC_CONVEX_URL is injected at build time, not stored as an env var. If you created the project by hand, set it manually."
     ;;
   supabase)
     add_env NEXT_PUBLIC_SUPABASE_URL            production "${SUPABASE_URL_PROD:-}"            || exit 1
@@ -54,4 +55,3 @@ esac
 
 echo "vercel: env configured for $PROJECT"
 echo "NOTE: if the GitHub repo isn't linked to Vercel yet, connect it once in the Vercel dashboard (Project → Settings → Git)."
-echo "NOTE: the Vercel Build Command must be: npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL (Project → Settings → Build & Development Settings). The orchestration writes this into vercel.json; NEXT_PUBLIC_CONVEX_URL is injected at build time, not stored as an env var. If you created the project by hand, set it manually."

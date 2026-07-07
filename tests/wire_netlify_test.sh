@@ -21,6 +21,7 @@ assert_contains "$l" "deploy-preview" "targets deploy-preview context"
 assert_contains "$l" "branch-deploy" "targets branch-deploy context"
 assert_not_contains "$l" "--auth" "does not pass the token on argv (NETLIFY_AUTH_TOKEN env var only)"
 assert_not_contains "$l" "NEXT_PUBLIC_CONVEX_URL" "does not store convex url (build-injected)"
+assert_contains "$out" "npx convex deploy" "prints the Convex build-command note for backend=convex"
 rm -f "$log"
 
 # Site already exists (by name, via sites:list) -> reused, sites:create NOT called
@@ -73,6 +74,7 @@ assert_contains "$l" "env:set NEXT_PUBLIC_SUPABASE_URL https://p.supabase.co --c
 assert_contains "$l" "env:set NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY pub_prod --context production" "sets prod publishable key"
 assert_contains "$l" "--context deploy-preview" "targets deploy-preview context"
 assert_contains "$l" "--context branch-deploy" "targets branch-deploy context"
+assert_not_contains "$out" "npx convex deploy" "does not print the Convex build-command note for backend=supabase"
 rm -f "$log" "$keys"
 
 # Supabase backend, staging not provisioned -> deploy-preview/branch-deploy skipped, still succeeds
