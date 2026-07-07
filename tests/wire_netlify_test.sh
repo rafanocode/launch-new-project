@@ -46,20 +46,6 @@ esac'
 out="$(NETLIFY_AUTH_TOKEN=bad bash "$ROOT/scripts/wire-netlify.sh" acme "$keys" 2>&1)"; rc=$?
 assert_fail_exit "$rc" "real netlify failure exits non-zero, not silently continuing"
 
-# supabase backend not yet implemented here (Task 10 in the plan replaces this branch) -> errors loudly BEFORE calling env:set, doesn't fall through
-log="$(mktemp)"
-make_stub netlify "echo \"netlify \$*\" >> $log
-case \"\$1\" in
-  sites:list) echo '[]';;
-  sites:create) exit 0;;
-  *) : ;;
-esac
-exit 0"
-out="$(NETLIFY_AUTH_TOKEN=t bash "$ROOT/scripts/wire-netlify.sh" acme "$keys" supabase 2>&1)"; rc=$?
-assert_fail_exit "$rc" "supabase backend placeholder exits non-zero rather than silently reusing convex handling"
-assert_not_contains "$(cat "$log")" "CONVEX_DEPLOY_KEY" "does not fall through to convex's env:set calls"
-rm -f "$log"
-
 # unknown backend -> also errors loudly before any env:set call
 log="$(mktemp)"
 make_stub netlify "echo \"netlify \$*\" >> $log
@@ -73,6 +59,21 @@ out="$(NETLIFY_AUTH_TOKEN=t bash "$ROOT/scripts/wire-netlify.sh" acme "$keys" bo
 assert_fail_exit "$rc" "unknown backend exits non-zero"
 assert_not_contains "$(cat "$log")" "CONVEX_DEPLOY_KEY" "does not fall through to convex's env:set calls"
 rm -f "$log"
+
+# Supabase backend
+log="$(mktemp)"
+make_stub netlify "echo \"netlify \$*\" >> $log
+case \"\$1\" in sites:list) echo '[]';; *) : ;; esac
+exit 0"
+keys="$(mktemp)"; printf 'SUPABASE_URL_PROD=https://p.supabase.co\nSUPABASE_PUBLISHABLE_KEY_PROD=pub_prod\nSUPABASE_URL_STAGING=https://s.supabase.co\nSUPABASE_PUBLISHABLE_KEY_STAGING=pub_staging\nSUPABASE_STAGING_PROVISIONED=yes\n' > "$keys"
+out="$(NETLIFY_AUTH_TOKEN=t bash "$ROOT/scripts/wire-netlify.sh" acme "$keys" supabase)"; rc=$?
+assert_eq "$rc" "0" "succeeds for supabase backend"
+l="$(cat "$log")"
+assert_contains "$l" "env:set NEXT_PUBLIC_SUPABASE_URL https://p.supabase.co --context production" "sets prod supabase url"
+assert_contains "$l" "env:set NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY pub_prod --context production" "sets prod publishable key"
+assert_contains "$l" "--context deploy-preview" "targets deploy-preview context"
+assert_contains "$l" "--context branch-deploy" "targets branch-deploy context"
+rm -f "$log" "$keys"
 
 rm -f "$keys"
 exit "$FAILS"

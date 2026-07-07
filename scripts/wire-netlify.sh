@@ -46,8 +46,16 @@ case "$BACKEND" in
     set_ctx CONVEX_DEPLOY_KEY branch-deploy  "${STAGING_KEY:-}" || exit 1
     ;;
   supabase)
-    echo "netlify: unknown backend 'supabase' handling not yet implemented" >&2
-    exit 1
+    set_ctx NEXT_PUBLIC_SUPABASE_URL            production "${SUPABASE_URL_PROD:-}"            || exit 1
+    set_ctx NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY production "${SUPABASE_PUBLISHABLE_KEY_PROD:-}" || exit 1
+    if [ "${SUPABASE_STAGING_PROVISIONED:-yes}" = "no" ]; then
+      echo "netlify: staging not provisioned (best-effort Supabase branch creation didn't complete) — skipping deploy-preview/branch-deploy env vars"
+    else
+      set_ctx NEXT_PUBLIC_SUPABASE_URL            deploy-preview "${SUPABASE_URL_STAGING:-}"            || exit 1
+      set_ctx NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY deploy-preview "${SUPABASE_PUBLISHABLE_KEY_STAGING:-}" || exit 1
+      set_ctx NEXT_PUBLIC_SUPABASE_URL            branch-deploy  "${SUPABASE_URL_STAGING:-}"            || exit 1
+      set_ctx NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY branch-deploy  "${SUPABASE_PUBLISHABLE_KEY_STAGING:-}" || exit 1
+    fi
     ;;
   *)
     echo "netlify: unknown backend '$BACKEND'" >&2
