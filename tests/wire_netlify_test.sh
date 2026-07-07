@@ -75,5 +75,18 @@ assert_contains "$l" "--context deploy-preview" "targets deploy-preview context"
 assert_contains "$l" "--context branch-deploy" "targets branch-deploy context"
 rm -f "$log" "$keys"
 
+# Supabase backend, staging not provisioned -> deploy-preview/branch-deploy skipped, still succeeds
+log="$(mktemp)"
+make_stub netlify "echo \"netlify \$*\" >> $log
+case \"\$1\" in sites:list) echo '[]';; *) : ;; esac
+exit 0"
+keys2="$(mktemp)"; printf 'SUPABASE_URL_PROD=https://p.supabase.co\nSUPABASE_PUBLISHABLE_KEY_PROD=pub_prod\nSUPABASE_STAGING_PROVISIONED=no\n' > "$keys2"
+out="$(NETLIFY_AUTH_TOKEN=t bash "$ROOT/scripts/wire-netlify.sh" acme "$keys2" supabase)"; rc=$?
+assert_eq "$rc" "0" "succeeds even when supabase staging isn't provisioned"
+assert_not_contains "$(cat "$log")" "--context deploy-preview" "does not set a deploy-preview env var with no staging project"
+assert_not_contains "$(cat "$log")" "--context branch-deploy" "does not set a branch-deploy env var with no staging project"
+assert_contains "$out" "staging not provisioned" "explains why preview/branch-deploy env vars were skipped"
+rm -f "$log" "$keys2"
+
 rm -f "$keys"
 exit "$FAILS"
