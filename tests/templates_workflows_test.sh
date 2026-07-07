@@ -4,7 +4,7 @@ set -u
 . "$ROOT/scripts/lib/stamp.sh"
 tmp="$(mktemp -d)"
 
-CONVEX_PROJECT_SLUG="acme" stamp_dir "$ROOT/templates/env" "$tmp/env"
+CONVEX_PROJECT_SLUG="acme" SUPABASE_PROJECT_SLUG="acme" stamp_dir "$ROOT/templates/env" "$tmp/env"
 assert_eq "$?" "0" "env template stamps with no leftover markers"
 
 # Workflows contain no {{ }} markers and reference the two secrets
