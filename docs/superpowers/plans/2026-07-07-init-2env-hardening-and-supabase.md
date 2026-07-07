@@ -621,7 +621,11 @@ team_flag=()
 
 # 1. Project (idempotent: a non-zero "already exists" is not fatal)
 echo "convex: ensuring project $SLUG"
-convex project create "$SLUG" "${team_flag[@]}" </dev/null >/dev/null 2>&1 \
+# "${team_flag[@]+"${team_flag[@]}"}" (not a bare "${team_flag[@]}") — expanding a
+# declared-but-empty array under `set -u` is an unbound-variable error on bash
+# <4.4 (confirmed on this repo's target, macOS's bash 3.2); the ${arr[@]+word}
+# form only substitutes when the array actually has elements.
+convex project create "$SLUG" "${team_flag[@]+"${team_flag[@]}"}" </dev/null >/dev/null 2>&1 \
   || echo "convex: project exists or already created, continuing"
 
 # 2. Staging prod-type deployment (idempotent)
