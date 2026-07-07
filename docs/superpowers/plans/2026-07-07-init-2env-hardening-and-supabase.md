@@ -779,6 +779,7 @@ set -u
 
 stub_supabase_happy() {
 make_stub supabase '
+echo "supabase $*" >> "${SUPABASE_CALL_LOG:-/dev/null}"
 case "$1 $2" in
   "orgs list") echo "[{\"id\":\"org1\",\"name\":\"Acme Org\",\"slug\":\"org1\"}]"; exit 0;;
   "projects list") echo "[]"; exit 0;;
@@ -789,6 +790,7 @@ esac'
 }
 
 # Happy path: single org auto-resolved, two projects created, keys extracted
+SUPABASE_CALL_LOG="$(mktemp)"; export SUPABASE_CALL_LOG
 stub_supabase_happy
 keys="$(mktemp)"
 out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode projects --keys-file "$keys")"; rc=$?
@@ -801,7 +803,15 @@ assert_contains "$k" "SUPABASE_DB_URL_PROD=postgresql://postgres:" "writes prod 
 assert_contains "$k" "SUPABASE_REF_STAGING=refabc123" "writes staging ref"
 assert_contains "$k" "SUPABASE_PUBLISHABLE_KEY_STAGING=sb_publishable_xyz" "writes staging publishable key"
 case "$out" in *sb_secret_xyz*) echo "  FAIL: secret key leaked to stdout"; FAILS=$((FAILS+1));; *) echo "  ok: no secret key on stdout";; esac
-rm -f "$keys"
+# the generated DB password must never appear on stdout either
+prod_pw="$(printf '%s' "$k" | sed -n 's#^SUPABASE_DB_URL_PROD=postgresql://postgres:\([^@]*\)@.*#\1#p')"
+assert_not_contains "$out" "$prod_pw" "generated db password never appears on stdout"
+# --region is REQUIRED by the real CLI whenever stdin isn't a tty (verified
+# against the installed CLI's source) — assert it's actually on the argv,
+# not just that the (stubbed) call returns success regardless of its flags
+assert_contains "$(cat "$SUPABASE_CALL_LOG")" "--region" "passes --region to projects create"
+rm -f "$keys" "$SUPABASE_CALL_LOG"
+unset SUPABASE_CALL_LOG
 
 # Multiple orgs, no --org-id given -> fatal, lists them
 make_stub supabase '
@@ -814,6 +824,26 @@ out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode projects --keys-file "
 assert_fail_exit "$rc" "fatal when multiple orgs and no --org-id"
 assert_contains "$out" "org1" "lists org1 as a candidate"
 assert_contains "$out" "org2" "lists org2 as a candidate"
+rm -f "$keys"
+
+# Zero orgs, no --org-id given -> fatal, distinct message from the multi-org case
+make_stub supabase '
+case "$1 $2" in
+  "orgs list") echo "[]"; exit 0;;
+  *) exit 0;;
+esac'
+keys="$(mktemp)"
+out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode projects --keys-file "$keys" 2>&1)"; rc=$?
+assert_fail_exit "$rc" "fatal when zero orgs and no --org-id"
+assert_contains "$out" "no organizations found" "reports zero orgs distinctly from the multi-org case"
+assert_not_contains "$out" "multiple organizations" "does not misreport zero orgs as multiple"
+rm -f "$keys"
+
+# --mode branch is not yet implemented in this task (Task 7 replaces this
+# stopgap) -> loud, non-zero exit, not a silent no-op success
+keys="$(mktemp)"
+out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode branch --keys-file "$keys" --org-id org1 2>&1)"; rc=$?
+assert_fail_exit "$rc" "mode=branch stopgap exits non-zero rather than silently succeeding"
 rm -f "$keys"
 
 # --org-id explicit skips org resolution entirely
@@ -900,6 +930,10 @@ if [ -z "$ORG_ID" ]; then
   count="$(printf '%s' "$orgs_json" | jq 'length')"
   case "$count" in
     1) ORG_ID="$(printf '%s' "$orgs_json" | jq -r '.[0].id')" ;;
+    0)
+      echo "setup-supabase: no organizations found on this account — create one first (https://supabase.com/dashboard/org/new or 'supabase orgs create'), then re-run." >&2
+      exit 1
+      ;;
     *)
       echo "setup-supabase: multiple organizations found, pass --org-id (or export SUPABASE_ORG_ID):" >&2
       printf '%s' "$orgs_json" | jq -r '.[] | "  \(.id)  \(.name)"' >&2
@@ -918,8 +952,16 @@ find_project_ref() { # <name>
 # Creates a NEW project named <name>; fails loudly (does not reuse) if one
 # already exists, since its DB password is unrecoverable. On success prints
 # "<ref> <password>" (space-separated) to stdout.
+#
+# --region is REQUIRED by `supabase projects create` whenever stdin isn't a
+# live terminal (confirmed against the installed CLI's source,
+# apps/cli-go/cmd/projects.go: `PreRunE` calls
+# `cmd.MarkFlagRequired("region")` whenever `!term.IsTerminal(...)`) — which
+# is exactly how this script always runs. Defaults to "us-east-1" (the
+# CLI's own documented example value), overridable via SUPABASE_REGION.
 create_project() { # <name>
-  local name="$1" existing ref pw out
+  local name="$1" existing ref pw out region
+  region="${SUPABASE_REGION:-us-east-1}"
   existing="$(find_project_ref "$name")"
   if [ -n "$existing" ]; then
     echo "setup-supabase: project '$name' already exists ($existing) but its DB password can only be captured at creation time — cannot safely resume." >&2
@@ -927,7 +969,7 @@ create_project() { # <name>
     return 1
   fi
   pw="$(gen_db_password)"
-  out="$(supabase projects create "$name" --org-id "$ORG_ID" --db-password "$pw" -o json 2>&1)" \
+  out="$(supabase projects create "$name" --org-id "$ORG_ID" --db-password "$pw" --region "$region" -o json 2>&1)" \
     || { echo "setup-supabase: failed to create project '$name': $out" >&2; return 1; }
   ref="$(printf '%s' "$out" | jq -r '.ref // .id // empty' 2>/dev/null)"
   [ -n "$ref" ] || { echo "setup-supabase: could not determine project ref for '$name' from: $out" >&2; return 1; }
@@ -973,6 +1015,16 @@ if [ "$MODE" = "projects" ]; then
   write_env_block STAGING "$staging_ref" "$staging_pw" || exit 1
 
   echo "supabase: setup complete, mode=projects (keys written to keys file)"
+fi
+
+# mode=branch is implemented by Task 7, which REPLACES this stopgap with the
+# real branch-creation logic. Left as a loud, non-zero-exit placeholder here
+# (rather than silently falling through and exiting 0 having done nothing)
+# so this task is independently correct: a "does nothing, exits 0" mode is a
+# false success, not a genuinely idempotent no-op.
+if [ "$MODE" = "branch" ]; then
+  echo "setup-supabase: --mode branch is not yet implemented" >&2
+  exit 2
 fi
 ```
 
@@ -1023,7 +1075,9 @@ Adds the second mode to the same script. Verified: `supabase branches create <na
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/setup_supabase_test.sh` (before the final `exit "$FAILS"`):
+First, REMOVE Task 6's stopgap-era test case from `tests/setup_supabase_test.sh` — the one asserting `--mode branch` exits non-zero via `assert_fail_exit "$rc" "mode=branch stopgap exits non-zero rather than silently succeeding"`. That assertion tested the placeholder this task replaces; with the real branch logic in place, a correctly-stubbed `--mode branch` call now succeeds (exit 0), so the old assertion would fail for the right reason (the stopgap is gone) but for a confusing one if left in place. Delete that whole test block (the `make_stub supabase` + `out=...` + `assert_fail_exit` + `rm -f "$keys"` lines for it).
+
+Then append the new tests below (before the final `exit "$FAILS"`):
 
 ```bash
 # mode=branch, branch creation succeeds
@@ -1072,11 +1126,18 @@ exit "$FAILS"
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `STUB_BIN="$(mktemp -d)" && PATH="$STUB_BIN:$PATH" ROOT="$(pwd)" bash tests/setup_supabase_test.sh`
-Expected: FAIL — `--mode branch` isn't handled yet (falls through with no matching `if` block, script exits 0 having done nothing, keys file stays empty).
+Expected: FAIL — `--mode branch` currently only hits Task 6's stopgap (`echo "...not yet implemented" >&2; exit 2`), not the real branch-creation behavior these new assertions check for.
 
-- [ ] **Step 3: Add the `branch` mode block**
+- [ ] **Step 3: Replace the stopgap with the real `branch` mode block**
 
-In `scripts/setup-supabase.sh`, after the closing `fi` of the `if [ "$MODE" = "projects" ]; then ... fi` block added in Task 6, add:
+In `scripts/setup-supabase.sh`, REPLACE Task 6's stopgap —
+```bash
+if [ "$MODE" = "branch" ]; then
+  echo "setup-supabase: --mode branch is not yet implemented" >&2
+  exit 2
+fi
+```
+— with:
 
 ```bash
 if [ "$MODE" = "branch" ]; then
