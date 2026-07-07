@@ -38,6 +38,19 @@ command against a real project.
       deployments: `production` and `staging`.
 - [ ] Each deployment has its own URL and its own data (no shared state).
 
+### (b′) Supabase — two projects mode
+
+- [ ] The Supabase dashboard shows two projects: `<slug>-prod` and `<slug>-staging`, each with its own ref, URL, and publishable key.
+- [ ] `supabase/migrations/` exists in the repo; a trivial migration (`supabase migration new e2e_test`) committed to `dev` and pushed triggers `supabase-deploy-dev.yml`, and the staging project shows the new migration applied (check via `supabase migration list --db-url "$SUPABASE_DB_URL_STAGING"` or the dashboard's migration history).
+- [ ] `main` is untouched — the production project does NOT show the new migration after a `dev`-only push.
+- [ ] GitHub secrets `SUPABASE_DB_URL_PROD` and `SUPABASE_DB_URL_STAGING` exist (values not visible, but listed in repo Settings → Secrets).
+
+### (b″) Supabase — persistent branch mode
+
+- [ ] The Supabase dashboard shows one project (production) and, if branch creation succeeded, a persistent branch named `dev` for staging.
+- [ ] **If branch creation succeeded**: pushing a migration to `dev` applies it to the branch, not to the parent project; `main` (production) is unaffected.
+- [ ] **If branch creation failed (best-effort)**: confirm the run still completed (exit 0), `SUPABASE_STAGING_PROVISIONED=no` behavior was observed (preview/development env vars skipped, staging GitHub secret skipped), and the manual follow-up instruction was printed in Phase 3. Follow it manually (connect GitHub integration, create the branch from the dashboard) and confirm the app then works end-to-end once `SUPABASE_DB_URL_STAGING` and the preview/development env vars are set by hand.
+
 ### (c) Push to `dev` deploys staging
 
 - [ ] Make a trivial change on `dev` (e.g. touch `convex/schema.ts` with a
@@ -80,5 +93,6 @@ command against a real project.
 
 - [ ] Delete the GitHub repo.
 - [ ] Delete both Convex deployments / the Convex project.
+- [ ] Delete the Supabase project(s) (and persistent branch, if created).
 - [ ] Delete the Vercel/Netlify project.
 - [ ] Delete (or archive) the throwaway Linear team/project and issue.
