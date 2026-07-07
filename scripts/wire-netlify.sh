@@ -22,20 +22,17 @@ BACKEND="${1:-convex}"
 # shellcheck disable=SC1090
 . "$KEYS_FILE"
 
-auth=()
-[ -n "${NETLIFY_AUTH_TOKEN:-}" ] && auth=(--auth "$NETLIFY_AUTH_TOKEN")
-
-existing="$(netlify sites:list "${auth[@]}" --json 2>/dev/null | jq -r --arg n "$SITE" '.[] | select(.name == $n) | .site_id' | head -n1)"
+existing="$(netlify sites:list --json 2>/dev/null | jq -r --arg n "$SITE" '.[] | select(.name == $n) | .site_id' | head -n1)"
 if [ -n "$existing" ]; then
   echo "netlify: site $SITE exists ($existing), reusing"
 else
-  netlify sites:create --name "$SITE" "${auth[@]}" >/dev/null 2>&1 \
+  netlify sites:create --name "$SITE" >/dev/null 2>&1 \
     || { echo "netlify: failed to create site $SITE" >&2; exit 1; }
   echo "netlify: site $SITE created"
 fi
 
 set_ctx() { # <name> <context> <value>
-  netlify env:set "$1" "$3" --context "$2" --force "${auth[@]}" >/dev/null 2>&1 || {
+  netlify env:set "$1" "$3" --context "$2" --force >/dev/null 2>&1 || {
     echo "netlify: failed to set $1 [$2]" >&2
     return 1
   }

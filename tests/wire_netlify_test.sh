@@ -19,6 +19,7 @@ assert_contains "$l" "--force" "uses --force to skip overwrite prompts"
 assert_contains "$l" "production" "targets production context"
 assert_contains "$l" "deploy-preview" "targets deploy-preview context"
 assert_contains "$l" "branch-deploy" "targets branch-deploy context"
+assert_not_contains "$l" "--auth" "does not pass the token on argv (NETLIFY_AUTH_TOKEN env var only)"
 assert_not_contains "$l" "NEXT_PUBLIC_CONVEX_URL" "does not store convex url (build-injected)"
 rm -f "$log"
 
