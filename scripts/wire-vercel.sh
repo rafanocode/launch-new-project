@@ -1,31 +1,48 @@
 #!/usr/bin/env bash
 set -u
-# Links/creates a Vercel project and sets CONVEX_DEPLOY_KEY per target:
-# production gets the prod key, preview and development get the staging key.
-# The key selects WHICH Convex deployment; NEXT_PUBLIC_CONVEX_URL is injected
-# at build time by the build command (see NOTE below), never stored here.
-# Values are piped via stdin to `vercel env add`, never passed on argv or
-# printed to stdout.
+# Links/creates a Vercel project and sets the backend's env vars per target.
+# Auth is via the VERCEL_TOKEN env var only (never passed as --token on argv,
+# which would leak in `ps`/process listings — see the Vercel CLI's own CI
+# guidance). Values are piped via stdin to `vercel env add`, never passed on
+# argv or printed to stdout. `--force` makes re-adding an existing var
+# succeed instead of prompting, so every remaining non-zero exit here is a
+# real failure (auth, network, invalid project) and must propagate.
 #
-# Reads PROD_KEY / STAGING_KEY from the keys file (written earlier by
-# setup-convex.sh). Does not delete the keys file; orchestration does that.
-PROJECT="${1:?usage: wire-vercel.sh <project> <keys-file>}"; shift
+# Reads the backend's keys from the keys file (written earlier by
+# setup-convex.sh / setup-supabase.sh). Does not delete the keys file;
+# orchestration does that.
+PROJECT="${1:?usage: wire-vercel.sh <project> <keys-file> [backend]}"; shift
 KEYS_FILE="${1:?keys file required}"; shift
+BACKEND="${1:-convex}"
 # shellcheck disable=SC1090
 . "$KEYS_FILE"
 
-tok=(--token "${VERCEL_TOKEN:-}" --yes)
-
-# Link/create project (idempotent)
-vercel link "${tok[@]}" --project "$PROJECT" >/dev/null 2>&1 || echo "vercel: link/create returned non-zero (continuing)"
+vercel link --project "$PROJECT" --yes >/dev/null 2>&1 \
+  || { echo "vercel: link/create failed for $PROJECT" >&2; exit 1; }
 
 add_env() { # <name> <target> <value>
-  printf '%s' "$3" | vercel env add "$1" "$2" "${tok[@]}" >/dev/null 2>&1 \
-    && echo "vercel: set $1 [$2]" || echo "vercel: $1 [$2] may already exist (continuing)"
+  printf '%s' "$3" | vercel env add "$1" "$2" --force --yes >/dev/null 2>&1 || {
+    echo "vercel: failed to set $1 [$2]" >&2
+    return 1
+  }
+  echo "vercel: set $1 [$2]"
 }
-add_env CONVEX_DEPLOY_KEY production   "${PROD_KEY:-}"
-add_env CONVEX_DEPLOY_KEY preview      "${STAGING_KEY:-}"
-add_env CONVEX_DEPLOY_KEY development  "${STAGING_KEY:-}"
+
+case "$BACKEND" in
+  convex)
+    add_env CONVEX_DEPLOY_KEY production   "${PROD_KEY:-}"    || exit 1
+    add_env CONVEX_DEPLOY_KEY preview      "${STAGING_KEY:-}" || exit 1
+    add_env CONVEX_DEPLOY_KEY development  "${STAGING_KEY:-}" || exit 1
+    ;;
+  supabase)
+    echo "vercel: unknown backend 'supabase' handling not yet implemented" >&2
+    exit 1
+    ;;
+  *)
+    echo "vercel: unknown backend '$BACKEND'" >&2
+    exit 1
+    ;;
+esac
 
 echo "vercel: env configured for $PROJECT"
 echo "NOTE: if the GitHub repo isn't linked to Vercel yet, connect it once in the Vercel dashboard (Project → Settings → Git)."
