@@ -21,10 +21,23 @@ vercel link --project "$PROJECT" --yes >/dev/null 2>&1 \
   || { echo "vercel: link/create failed for $PROJECT" >&2; exit 1; }
 
 add_env() { # <name> <target> <value>
-  printf '%s' "$3" | vercel env add "$1" "$2" --force --yes >/dev/null 2>&1 || {
-    echo "vercel: failed to set $1 [$2]" >&2
-    return 1
-  }
+  # The real Vercel CLI, run non-interactively (always true here), refuses
+  # to infer "all preview branches" from a stdin-piped value and errors with
+  # git_branch_required, demanding an explicit --value instead (verified
+  # against the actual CLI). production/development have no such
+  # requirement and keep using stdin, since --value would otherwise put a
+  # real secret (e.g. CONVEX_DEPLOY_KEY) on argv unnecessarily.
+  if [ "$2" = "preview" ]; then
+    vercel env add "$1" "$2" --value "$3" --force --yes >/dev/null 2>&1 || {
+      echo "vercel: failed to set $1 [$2]" >&2
+      return 1
+    }
+  else
+    printf '%s' "$3" | vercel env add "$1" "$2" --force --yes >/dev/null 2>&1 || {
+      echo "vercel: failed to set $1 [$2]" >&2
+      return 1
+    }
+  fi
   echo "vercel: set $1 [$2]"
 }
 

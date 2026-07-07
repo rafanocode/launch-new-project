@@ -12,6 +12,14 @@ l="$(cat "$log")"
 assert_contains "$l" "env add CONVEX_DEPLOY_KEY production" "sets prod deploy key"
 assert_contains "$l" "env add CONVEX_DEPLOY_KEY preview" "sets preview deploy key"
 assert_contains "$l" "env add CONVEX_DEPLOY_KEY development" "sets development deploy key"
+# The real Vercel CLI, run non-interactively, refuses to infer "all preview
+# branches" from stdin (git_branch_required) and requires an explicit
+# --value for the preview target specifically -- verified against the real
+# CLI. production/development have no such requirement and must keep using
+# stdin (never putting a real secret like CONVEX_DEPLOY_KEY on argv there).
+assert_contains "$l" "env add CONVEX_DEPLOY_KEY preview --value sk" "passes --value for the preview target (required by the real CLI)"
+assert_not_contains "$l" "env add CONVEX_DEPLOY_KEY production --value" "production still uses stdin, not --value"
+assert_not_contains "$l" "env add CONVEX_DEPLOY_KEY development --value" "development still uses stdin, not --value"
 assert_contains "$l" "--force" "uses --force so re-runs don't fail on existing vars"
 assert_not_contains "$l" "--token" "does not pass the token on argv (VERCEL_TOKEN env var only)"
 assert_not_contains "$l" "NEXT_PUBLIC_CONVEX_URL" "does not store convex url (build-injected)"
@@ -42,6 +50,8 @@ assert_contains "$l" "env add NEXT_PUBLIC_SUPABASE_URL production" "sets prod su
 assert_contains "$l" "env add NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY production" "sets prod publishable key"
 assert_contains "$l" "env add NEXT_PUBLIC_SUPABASE_URL preview" "sets preview supabase url"
 assert_contains "$l" "env add NEXT_PUBLIC_SUPABASE_URL development" "sets development supabase url"
+assert_contains "$l" "env add NEXT_PUBLIC_SUPABASE_URL preview --value" "passes --value for the supabase preview target too"
+assert_not_contains "$l" "env add NEXT_PUBLIC_SUPABASE_URL development --value" "development still uses stdin, not --value"
 assert_not_contains "$out" "npx convex deploy" "does not print the Convex build-command note for backend=supabase"
 rm -f "$log"
 
