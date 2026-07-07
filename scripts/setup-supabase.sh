@@ -61,7 +61,7 @@ find_project_ref() { # <name>
 # already exists, since its DB password is unrecoverable. On success prints
 # "<ref> <password>" (space-separated) to stdout.
 create_project() { # <name>
-  local name="$1" existing ref pw out region
+  local name="$1" existing ref pw out err_file rc region
   region="${SUPABASE_REGION:-us-east-1}"
   existing="$(find_project_ref "$name")"
   if [ -n "$existing" ]; then
@@ -70,8 +70,19 @@ create_project() { # <name>
     return 1
   fi
   pw="$(gen_db_password)"
-  out="$(supabase projects create "$name" --org-id "$ORG_ID" --db-password "$pw" --region "$region" -o json 2>&1)" \
-    || { echo "setup-supabase: failed to create project '$name': $out" >&2; return 1; }
+  # stderr is captured separately, NOT merged via 2>&1: the real CLI writes
+  # non-JSON noise (e.g. a "new version available" banner) to stderr even on
+  # success, which would corrupt the JSON `-o json` prints to stdout if the
+  # two streams were combined before jq ever sees it.
+  err_file="$(mktemp)"
+  out="$(supabase projects create "$name" --org-id "$ORG_ID" --db-password "$pw" --region "$region" -o json 2>"$err_file")"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "setup-supabase: failed to create project '$name': $(cat "$err_file")" >&2
+    rm -f "$err_file"
+    return 1
+  fi
+  rm -f "$err_file"
   ref="$(printf '%s' "$out" | jq -r '.ref // .id // empty' 2>/dev/null)"
   [ -n "$ref" ] || { echo "setup-supabase: could not determine project ref for '$name' from: $out" >&2; return 1; }
   printf '%s %s' "$ref" "$pw"
@@ -123,11 +134,18 @@ if [ "$MODE" = "branch" ]; then
   prod_ref="${prod_out%% *}"; prod_pw="${prod_out#* }"
   write_env_block PROD "$prod_ref" "$prod_pw" || exit 1
 
-  if branch_out="$(supabase branches create dev --persistent --project-ref "$prod_ref" -o json 2>&1)"; then
+  # Same stderr/stdout separation as create_project(), and for the same
+  # reason: the real CLI can write non-JSON noise to stderr even on a
+  # successful branch create, which would corrupt the `-o json` stdout if
+  # the two streams were merged before jq parses it.
+  branch_err_file="$(mktemp)"
+  if branch_out="$(supabase branches create dev --persistent --project-ref "$prod_ref" -o json 2>"$branch_err_file")"; then
     branch_ref="$(printf '%s' "$branch_out" | jq -r '.ref // empty' 2>/dev/null)"
   else
     branch_ref=""
+    branch_out="$(cat "$branch_err_file")"
   fi
+  rm -f "$branch_err_file"
 
   if [ -n "$branch_ref" ]; then
     # A persistent branch is its own project-like entity: it has its own

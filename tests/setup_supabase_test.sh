@@ -81,6 +81,25 @@ assert_fail_exit "$rc" "fatal when the target project already exists (password u
 assert_contains "$out" "acme-prod" "names the conflicting project"
 rm -f "$keys"
 
+# projects create succeeds but the real CLI writes noise to stderr (version
+# update banner) alongside clean JSON on stdout -- must not be treated as a
+# parse failure just because stderr is non-empty (regression: a real E2E run
+# hit this exact case and orphaned a real cloud project because the old code
+# merged 2>&1, corrupting the JSON jq needed to parse)
+make_stub supabase '
+case "$1 $2" in
+  "orgs list") echo "[{\"id\":\"org1\",\"name\":\"Acme\",\"slug\":\"org1\"}]"; exit 0;;
+  "projects list") echo "[]"; exit 0;;
+  "projects create") echo "A new version of Supabase CLI is available" >&2; echo "{\"ref\":\"noisyref1\"}"; exit 0;;
+  "projects api-keys") echo "[{\"name\":\"default\",\"type\":\"publishable\",\"api_key\":\"sb_publishable_noisy\"}]"; exit 0;;
+  *) exit 0;;
+esac'
+keys="$(mktemp)"
+out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode projects --keys-file "$keys" 2>&1)"; rc=$?
+assert_eq "$rc" "0" "succeeds even when the CLI writes a version-update banner to stderr on create"
+assert_contains "$(cat "$keys")" "SUPABASE_REF_PROD=noisyref1" "still extracts the ref despite stderr noise on the create call"
+rm -f "$keys"
+
 # projects create real failure -> fatal (not swallowed)
 make_stub supabase '
 case "$1 $2" in
@@ -112,6 +131,27 @@ k="$(cat "$keys")"
 assert_contains "$k" "SUPABASE_REF_PROD=prodref1" "writes prod ref"
 assert_contains "$k" "SUPABASE_STAGING_PROVISIONED=yes" "marks staging as provisioned"
 assert_contains "$k" "SUPABASE_REF_STAGING=branchref1" "writes staging ref from the branch"
+rm -f "$keys"
+
+# mode=branch, branch creation succeeds but the real CLI writes noise to
+# stderr alongside clean JSON on stdout -- must not be misclassified as a
+# best-effort failure just because stderr is non-empty (same regression
+# class as the projects-create case above, for the branches create call)
+make_stub supabase '
+case "$1 $2" in
+  "orgs list") echo "[{\"id\":\"org1\",\"name\":\"Acme\",\"slug\":\"org1\"}]"; exit 0;;
+  "projects list") echo "[]"; exit 0;;
+  "projects create") echo "{\"ref\":\"prodref1\"}"; exit 0;;
+  "projects api-keys") echo "[{\"name\":\"default\",\"type\":\"publishable\",\"api_key\":\"sb_publishable_prod\"}]"; exit 0;;
+  "branches create") echo "A new version of Supabase CLI is available" >&2; echo "{\"ref\":\"branchref1\"}"; exit 0;;
+  *) exit 0;;
+esac'
+keys="$(mktemp)"
+out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode branch --keys-file "$keys")"; rc=$?
+assert_eq "$rc" "0" "mode=branch succeeds when the CLI writes stderr noise on a successful branch create"
+k="$(cat "$keys")"
+assert_contains "$k" "SUPABASE_STAGING_PROVISIONED=yes" "does not misclassify a noisy-but-successful branch create as failed"
+assert_contains "$k" "SUPABASE_REF_STAGING=branchref1" "still extracts the branch ref despite stderr noise"
 rm -f "$keys"
 
 # mode=branch, branch creation fails -> non-fatal, staging marked not-provisioned
