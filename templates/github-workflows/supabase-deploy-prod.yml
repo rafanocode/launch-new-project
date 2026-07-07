@@ -1,0 +1,31 @@
+name: Supabase Migrate (production)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - '.github/workflows/supabase-deploy-prod.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: supabase-deploy-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Push migrations to production
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL_PROD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify db url present
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::Missing secret SUPABASE_DB_URL_PROD"; exit 1
+          fi
+      - uses: supabase/setup-cli@v1
+      - name: Push migrations (production)
+        run: supabase db push --db-url "$SUPABASE_DB_URL"
