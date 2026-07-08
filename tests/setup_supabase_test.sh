@@ -3,6 +3,12 @@ set -u
 . "$ROOT/tests/lib/assert.sh"
 . "$ROOT/tests/lib/with_stubs.sh"
 
+# resolve_pooler_host() retries for up to 5 minutes (30 x 10s) against a
+# newly-provisioning real project -- override both to keep this suite fast.
+SUPABASE_POOLER_RETRY_ATTEMPTS=2
+SUPABASE_POOLER_RETRY_INTERVAL=0
+export SUPABASE_POOLER_RETRY_ATTEMPTS SUPABASE_POOLER_RETRY_INTERVAL
+
 stub_supabase_happy() {
 make_stub supabase '
 echo "supabase $*" >> "${SUPABASE_CALL_LOG:-/dev/null}"
@@ -103,6 +109,29 @@ out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode projects --keys-file "
 assert_eq "$rc" "0" "succeeds even when the CLI writes a version-update banner to stderr on create"
 assert_contains "$(cat "$keys")" "SUPABASE_REF_PROD=noisyref1" "still extracts the ref despite stderr noise on the create call"
 rm -f "$keys"
+
+# project still provisioning on the first attempt (real behavior: freshly
+# created projects stay COMING_UP for a while before the pooler is ready)
+# -> resolve_pooler_host retries and succeeds once link works
+link_attempts="$(mktemp)"; printf '0' > "$link_attempts"
+make_stub supabase "
+case \"\$1 \$2\" in
+  \"orgs list\") echo '[{\"id\":\"org1\",\"name\":\"Acme\",\"slug\":\"org1\"}]'; exit 0;;
+  \"projects list\") echo '[]'; exit 0;;
+  \"projects create\") echo '{\"ref\":\"refslow\"}'; exit 0;;
+  \"projects api-keys\") echo '[{\"name\":\"default\",\"type\":\"publishable\",\"api_key\":\"sb_publishable_xyz\"}]'; exit 0;;
+  \"link --project-ref\")
+    n=\$(cat '$link_attempts'); n=\$((n+1)); printf '%s' \"\$n\" > '$link_attempts'
+    if [ \"\$n\" -lt 2 ]; then exit 1; fi
+    mkdir -p supabase/.temp; echo 'postgresql://postgres.\$3@aws-0-us-east-1.pooler.supabase.com:5432/postgres' > supabase/.temp/pooler-url; exit 0;;
+  *) exit 0;;
+esac"
+keys="$(mktemp)"
+out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode projects --keys-file "$keys" 2>&1)"; rc=$?
+assert_eq "$rc" "0" "succeeds once the pooler becomes ready on a later retry"
+assert_contains "$(cat "$keys")" "SUPABASE_DB_URL_PROD=postgresql://postgres.refslow:" "still writes the pooler-based db url after retrying"
+assert_contains "$out" "still provisioning" "explains the wait to the user"
+rm -f "$keys" "$link_attempts"
 
 # pooler host cannot be resolved (e.g. `supabase link` fails or is too old
 # to write .temp/pooler-url) -> fatal, not a silent fallback to the

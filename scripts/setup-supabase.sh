@@ -114,14 +114,33 @@ extract_public_key() { # <ref>
 # link` (no DB password needed) is the CLI's own way of resolving this: it
 # writes the correct pooler host to .temp/pooler-url. Run in an isolated
 # temp directory so it never touches the caller's actual project directory.
+# A freshly created project is not immediately ready: its status stays
+# COMING_UP for roughly 1-3 minutes (observed empirically) before the
+# pooler is provisioned, during which `supabase link` succeeds but writes
+# no usable pooler-url. Retries for up to 5 minutes (30 x 10s, both
+# overridable via env vars so tests can run this loop instantly) before
+# giving up, printing one progress message so a long wait doesn't look
+# like a hang.
 resolve_pooler_host() { # <ref>
-  local ref="$1" tmp_dir pooler_url host
-  tmp_dir="$(mktemp -d)"
-  (cd "$tmp_dir" && supabase link --project-ref "$ref" >/dev/null 2>&1)
-  pooler_url="$(cat "$tmp_dir/supabase/.temp/pooler-url" 2>/dev/null)"
-  rm -rf "$tmp_dir"
-  host="$(printf '%s' "$pooler_url" | sed -n 's#.*@\([^:]*\):.*#\1#p')"
-  [ -n "$host" ] && printf '%s' "$host"
+  local ref="$1" tmp_dir pooler_url host attempt max_attempts sleep_s
+  max_attempts="${SUPABASE_POOLER_RETRY_ATTEMPTS:-30}"
+  sleep_s="${SUPABASE_POOLER_RETRY_INTERVAL:-10}"
+  for attempt in $(seq 1 "$max_attempts"); do
+    tmp_dir="$(mktemp -d)"
+    (cd "$tmp_dir" && supabase link --project-ref "$ref" >/dev/null 2>&1)
+    pooler_url="$(cat "$tmp_dir/supabase/.temp/pooler-url" 2>/dev/null)"
+    rm -rf "$tmp_dir"
+    host="$(printf '%s' "$pooler_url" | sed -n 's#.*@\([^:]*\):.*#\1#p')"
+    if [ -n "$host" ]; then
+      printf '%s' "$host"
+      return 0
+    fi
+    if [ "$attempt" -eq 1 ]; then
+      echo "setup-supabase: $ref is still provisioning (pooler not ready yet), waiting..." >&2
+    fi
+    [ "$attempt" -lt "$max_attempts" ] && sleep "$sleep_s"
+  done
+  return 1
 }
 
 write_env_block() { # <suffix PROD|STAGING> <ref> <password>
