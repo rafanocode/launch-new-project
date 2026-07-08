@@ -11,6 +11,7 @@ case "$1 $2" in
   "projects list") echo "[]"; exit 0;;
   "projects create") echo "{\"ref\":\"refabc123\",\"name\":\"$3\"}"; exit 0;;
   "projects api-keys") echo "[{\"name\":\"default\",\"type\":\"publishable\",\"api_key\":\"sb_publishable_xyz\"},{\"name\":\"default\",\"type\":\"secret\",\"api_key\":\"sb_secret_xyz\"}]"; exit 0;;
+  "link --project-ref") mkdir -p supabase/.temp; echo "postgresql://postgres.$3@aws-0-us-east-1.pooler.supabase.com:5432/postgres" > supabase/.temp/pooler-url; exit 0;;
   *) exit 0;;
 esac'
 }
@@ -25,11 +26,13 @@ k="$(cat "$keys")"
 assert_contains "$k" "SUPABASE_REF_PROD=refabc123" "writes prod ref"
 assert_contains "$k" "SUPABASE_URL_PROD=https://refabc123.supabase.co" "writes prod url"
 assert_contains "$k" "SUPABASE_PUBLISHABLE_KEY_PROD=sb_publishable_xyz" "writes prod publishable key"
-assert_contains "$k" "SUPABASE_DB_URL_PROD=postgresql://postgres:" "writes prod db url"
+assert_contains "$k" "SUPABASE_DB_URL_PROD=postgresql://postgres.refabc123:" "writes prod db url with the per-project pooler username"
+assert_contains "$k" "aws-0-us-east-1.pooler.supabase.com:6543" "uses the IPv4 pooler host/transaction-mode port, not the IPv6-only direct connection"
+assert_not_contains "$k" "db.refabc123.supabase.co" "does not use the direct (IPv6-only) connection host"
 assert_contains "$k" "SUPABASE_REF_STAGING=refabc123" "writes staging ref"
 assert_contains "$k" "SUPABASE_PUBLISHABLE_KEY_STAGING=sb_publishable_xyz" "writes staging publishable key"
 case "$out" in *sb_secret_xyz*) echo "  FAIL: secret key leaked to stdout"; FAILS=$((FAILS+1));; *) echo "  ok: no secret key on stdout";; esac
-prod_pw="$(printf '%s' "$k" | sed -n 's#^SUPABASE_DB_URL_PROD=postgresql://postgres:\([^@]*\)@.*#\1#p')"
+prod_pw="$(printf '%s' "$k" | sed -n 's#^SUPABASE_DB_URL_PROD=postgresql://postgres\.refabc123:\([^@]*\)@.*#\1#p')"
 assert_not_contains "$out" "$prod_pw" "generated db password never appears on stdout"
 assert_contains "$(cat "$SUPABASE_CALL_LOG")" "--region" "passes --region to projects create"
 rm -f "$keys" "$SUPABASE_CALL_LOG"
@@ -92,12 +95,32 @@ case "$1 $2" in
   "projects list") echo "[]"; exit 0;;
   "projects create") echo "A new version of Supabase CLI is available" >&2; echo "{\"ref\":\"noisyref1\"}"; exit 0;;
   "projects api-keys") echo "[{\"name\":\"default\",\"type\":\"publishable\",\"api_key\":\"sb_publishable_noisy\"}]"; exit 0;;
+  "link --project-ref") mkdir -p supabase/.temp; echo "postgresql://postgres.$3@aws-0-us-east-1.pooler.supabase.com:5432/postgres" > supabase/.temp/pooler-url; exit 0;;
   *) exit 0;;
 esac'
 keys="$(mktemp)"
 out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode projects --keys-file "$keys" 2>&1)"; rc=$?
 assert_eq "$rc" "0" "succeeds even when the CLI writes a version-update banner to stderr on create"
 assert_contains "$(cat "$keys")" "SUPABASE_REF_PROD=noisyref1" "still extracts the ref despite stderr noise on the create call"
+rm -f "$keys"
+
+# pooler host cannot be resolved (e.g. `supabase link` fails or is too old
+# to write .temp/pooler-url) -> fatal, not a silent fallback to the
+# IPv6-only direct connection (which would just fail later, in CI, far from
+# this script's own clear error message)
+make_stub supabase '
+case "$1 $2" in
+  "orgs list") echo "[{\"id\":\"org1\",\"name\":\"Acme\",\"slug\":\"org1\"}]"; exit 0;;
+  "projects list") echo "[]"; exit 0;;
+  "projects create") echo "{\"ref\":\"refnopool\"}"; exit 0;;
+  "projects api-keys") echo "[{\"name\":\"default\",\"type\":\"publishable\",\"api_key\":\"sb_publishable_xyz\"}]"; exit 0;;
+  "link --project-ref") exit 1;;
+  *) exit 0;;
+esac'
+keys="$(mktemp)"
+out="$(bash "$ROOT/scripts/setup-supabase.sh" acme --mode projects --keys-file "$keys" 2>&1)"; rc=$?
+assert_fail_exit "$rc" "fatal when the IPv4 pooler host can't be resolved"
+assert_contains "$out" "could not resolve the IPv4 pooler host" "explains why it failed"
 rm -f "$keys"
 
 # projects create real failure -> fatal (not swallowed)
@@ -120,6 +143,7 @@ case "$1 $2" in
   "projects list") echo "[]"; exit 0;;
   "projects create") echo "{\"ref\":\"prodref1\"}"; exit 0;;
   "projects api-keys") echo "[{\"name\":\"default\",\"type\":\"publishable\",\"api_key\":\"sb_publishable_prod\"}]"; exit 0;;
+  "link --project-ref") mkdir -p supabase/.temp; echo "postgresql://postgres.$3@aws-0-us-east-1.pooler.supabase.com:5432/postgres" > supabase/.temp/pooler-url; exit 0;;
   "branches create") echo "{\"ref\":\"branchref1\"}"; exit 0;;
   "branches get") echo "{\"ref\":\"branchref1\"}"; exit 0;;
   *) exit 0;;
@@ -143,6 +167,7 @@ case "$1 $2" in
   "projects list") echo "[]"; exit 0;;
   "projects create") echo "{\"ref\":\"prodref1\"}"; exit 0;;
   "projects api-keys") echo "[{\"name\":\"default\",\"type\":\"publishable\",\"api_key\":\"sb_publishable_prod\"}]"; exit 0;;
+  "link --project-ref") mkdir -p supabase/.temp; echo "postgresql://postgres.$3@aws-0-us-east-1.pooler.supabase.com:5432/postgres" > supabase/.temp/pooler-url; exit 0;;
   "branches create") echo "A new version of Supabase CLI is available" >&2; echo "{\"ref\":\"branchref1\"}"; exit 0;;
   *) exit 0;;
 esac'
@@ -161,6 +186,7 @@ case "$1 $2" in
   "projects list") echo "[]"; exit 0;;
   "projects create") echo "{\"ref\":\"prodref1\"}"; exit 0;;
   "projects api-keys") echo "[{\"name\":\"default\",\"type\":\"publishable\",\"api_key\":\"sb_publishable_prod\"}]"; exit 0;;
+  "link --project-ref") mkdir -p supabase/.temp; echo "postgresql://postgres.$3@aws-0-us-east-1.pooler.supabase.com:5432/postgres" > supabase/.temp/pooler-url; exit 0;;
   "branches create") echo "GitHub integration not connected" >&2; exit 1;;
   *) exit 0;;
 esac'

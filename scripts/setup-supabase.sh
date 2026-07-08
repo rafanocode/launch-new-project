@@ -103,14 +103,37 @@ extract_public_key() { # <ref>
   printf '%s' "$key"
 }
 
+# Resolves the IPv4-compatible pooler (Supavisor) host for a project ref.
+# The direct db.<ref>.supabase.co connection is IPv6-only on standard tiers
+# (confirmed against Supabase's own docs) and unreachable from IPv4-only
+# networks -- this broke a real GitHub Actions CI run ("network is
+# unreachable") during E2E validation. The pooler's shard prefix
+# (aws-0-, aws-1-, ...) is assigned per project and cannot be guessed or
+# hardcoded (verified: a project only routes correctly through its own
+# assigned shard, any other shard returns "tenant/user not found"). `supabase
+# link` (no DB password needed) is the CLI's own way of resolving this: it
+# writes the correct pooler host to .temp/pooler-url. Run in an isolated
+# temp directory so it never touches the caller's actual project directory.
+resolve_pooler_host() { # <ref>
+  local ref="$1" tmp_dir pooler_url host
+  tmp_dir="$(mktemp -d)"
+  (cd "$tmp_dir" && supabase link --project-ref "$ref" >/dev/null 2>&1)
+  pooler_url="$(cat "$tmp_dir/supabase/.temp/pooler-url" 2>/dev/null)"
+  rm -rf "$tmp_dir"
+  host="$(printf '%s' "$pooler_url" | sed -n 's#.*@\([^:]*\):.*#\1#p')"
+  [ -n "$host" ] && printf '%s' "$host"
+}
+
 write_env_block() { # <suffix PROD|STAGING> <ref> <password>
-  local suffix="$1" ref="$2" pw="$3" pub
+  local suffix="$1" ref="$2" pw="$3" pub pooler_host
   pub="$(extract_public_key "$ref")" || { echo "setup-supabase: failed to extract a usable publishable/anon key for $ref" >&2; return 1; }
+  pooler_host="$(resolve_pooler_host "$ref")"
+  [ -n "$pooler_host" ] || { echo "setup-supabase: could not resolve the IPv4 pooler host for $ref (the direct connection is IPv6-only and won't work from GitHub Actions)" >&2; return 1; }
   {
     echo "SUPABASE_REF_${suffix}=${ref}"
     echo "SUPABASE_URL_${suffix}=https://${ref}.supabase.co"
     echo "SUPABASE_PUBLISHABLE_KEY_${suffix}=${pub}"
-    echo "SUPABASE_DB_URL_${suffix}=postgresql://postgres:${pw}@db.${ref}.supabase.co:5432/postgres"
+    echo "SUPABASE_DB_URL_${suffix}=postgresql://postgres.${ref}:${pw}@${pooler_host}:6543/postgres"
   } >> "$KEYS_FILE"
 }
 
